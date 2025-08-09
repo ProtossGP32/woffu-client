@@ -29,7 +29,9 @@ class HTTPResponse:
         content_type = self.headers.get("Content-Type", "")
         if "charset=" in content_type:
             try:
-                encoding = content_type.split("charset=")[1].split(";")[0].strip()
+                enc = content_type.split("charset=")[1].split(";")[0].strip()
+                if enc:
+                    encoding = enc
             except Exception:
                 pass
         return self.content().decode(encoding, errors="replace")
@@ -49,7 +51,11 @@ class HTTPResponse:
         return cast(bytes, self._cached_content)
 
     def iter_content(self, chunk_size: Optional[int] = 1024) -> Iterator[bytes]:
-        if not self._stream or self._raw is None:
+        if self._raw is None:
+            yield b""
+            return
+        
+        if not self._stream:
             yield self.content()
             return
 
@@ -83,6 +89,11 @@ class HTTPResponse:
                 break
             yield chunk
 
+    def close(self) -> None:
+        """Close the underlying raw response if it supports close."""
+        close_method = getattr(self._raw, "close", None)
+        if callable(close_method):
+            close_method()
 
 class Session:
     headers: Dict[str, str]
@@ -229,3 +240,15 @@ class Session:
     def __exit__(self, exc_type: Optional[type], exc: Optional[BaseException], tb: Optional[Any]) -> bool:
         # nothing special to close; cookiejar/opener don't need explicit close
         return False
+
+    def close(self) -> None:
+        """
+        Close the session by clearing cookies and closing any underlying resources.
+        This is just for API consistency, this isn't needed if using a Context manager"""
+        # Clear all cookies
+        self._cookie_jar.clear()
+
+        # Try to close the opener if it has a close method (some custom openers might)
+        close_method = getattr(self.opener, "close", None)
+        if callable(close_method):
+            close_method()
