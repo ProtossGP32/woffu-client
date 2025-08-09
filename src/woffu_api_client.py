@@ -3,7 +3,7 @@ import os
 import sys
 import json
 import logging
-import requests
+from .stdrequests_session import Session
 
 # Initialize a logger
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 
 
-class WoffuAPIClient():
+class WoffuAPIClient(Session):
     # Class arguments
     _woffu_api_url: str = "https://app.woffu.com"
 
@@ -28,8 +28,8 @@ class WoffuAPIClient():
             return
         
         logger.info("Requesting access token...")
-        response = requests.post(
-            f"{self._woffu_api_url}/token",
+        response = self.post(
+            url=f"{self._woffu_api_url}/token",
             data = f"grant_type=password&username={username}&password={password}"
         )
         
