@@ -220,6 +220,35 @@ class TestHTTPResponse(TestCase):
         text = resp.text()
         assert text == "test"
 
+    def test_aiter_content_chunk_size_fallback(self) -> None:
+        class DummyRaw:
+            def __init__(self):
+                self.read_calls: List[int] = []
+
+            def read(self, size: int) -> bytes:
+                self.read_calls.append(size)
+                # Return empty bytes immediately to stop iteration
+                return b""
+
+        raw = DummyRaw()
+        response = HTTPResponse(raw_resp=raw, status=200, headers={}, stream=True)
+
+        async def run_test() -> None:
+            # chunk_size = None (should fallback to 8192)
+            chunks = [chunk async for chunk in response.aiter_content(chunk_size=None)]
+            self.assertEqual(chunks, [])
+            self.assertEqual(raw.read_calls, [8192])
+
+            # Reset calls
+            raw.read_calls.clear()
+
+            # chunk_size <= 0 (e.g., 0) (should fallback to 8192)
+            chunks = [chunk async for chunk in response.aiter_content(chunk_size=0)]
+            self.assertEqual(chunks, [])
+            self.assertEqual(raw.read_calls, [8192])
+
+        asyncio.run(run_test())
+
 class TestSession(TestCase):
 
     def setUp(self) -> None:
@@ -661,3 +690,30 @@ class TestSession(TestCase):
             self.assertEqual(self.called_url, "http://example.com")
 
         self._run_async(run_test())
+
+    def test_patch_method_calls_request(self) -> None:
+        # Prepare a dummy raw response to use in DummyOpener
+        class DummyRawResp:
+            def getcode(self) -> int:
+                return 200
+            def getheaders(self) -> list:
+                return []
+            def read(self) -> bytes:
+                return b"{}"
+
+        self.opener._response = DummyRawResp()  # set dummy response so open() won't raise
+
+        with patch.object(self.session, "request", wraps=self.session.request) as mock_request:
+            # Call patch
+            resp = self.session.patch("http://example.com/api", data={"key": "value"})
+
+            # Assert request was called once with method="PATCH"
+            mock_request.assert_called_once()
+            args, kwargs = mock_request.call_args
+            self.assertEqual(args[0], "PATCH")  # method argument
+            self.assertEqual(args[1], "http://example.com/api")  # url argument
+            self.assertIn("data", kwargs)
+            self.assertEqual(kwargs["data"], {"key": "value"})
+
+            # Since the patched request returns an HTTPResponse, resp should be an HTTPResponse instance
+            self.assertIsInstance(resp, HTTPResponse)
