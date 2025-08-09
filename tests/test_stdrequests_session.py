@@ -15,7 +15,7 @@ class DummyRawResponse:
         self._headers = headers or {}
 
     def read(self, size: int = -1) -> bytes:
-        if size == -1:
+        if size is None or size == -1:
             size = len(self._content) - self._pos
         data = self._content[self._pos : self._pos + size]
         self._pos += size
@@ -89,6 +89,27 @@ class TestHTTPResponse(TestCase):
         raw = DummyRawResponse(content=content, headers={"Content-Type": "text/plain; charset=latin-1"})
         resp = HTTPResponse(raw, 200, {"Content-Type": "text/plain; charset=latin-1"})
         self.assertEqual(resp.text(), "café")
+
+    def test_text_with_no_content_type_header(self):
+        content = "hello"
+        raw = DummyRawResponse(content=content.encode("utf-8"))
+        resp = HTTPResponse(raw, 200, {})
+        self.assertEqual(resp.text(), content)
+
+    def test_iter_content_zero_chunk_size(self):
+        content = b"abcdef"
+        raw = DummyRawResponse(content=content)
+        resp = HTTPResponse(raw, 200, {}, stream=True)
+        # chunk_size = 0 should behave gracefully and yield empty bytes
+        chunks = list(resp.iter_content(chunk_size=0))
+        self.assertEqual(b"".join(chunks), b"")
+
+    def test_headers_property_returns_dict(self):
+        content = b"data"
+        headers = {"X-Test": "value"}
+        raw = DummyRawResponse(content=content, headers=headers)
+        resp = HTTPResponse(raw, 200, headers)
+        self.assertEqual(resp.headers, headers)
 
 
 class TestSession(TestCase):
@@ -174,3 +195,33 @@ class TestSession(TestCase):
         self.opener._response = DummyRawResponse(status=200, content=b"ok")
         resp = self.session.get("http://example.com", headers={"X-Test": "yes"}, timeout=5)
         self.assertEqual(resp.status, 200)
+
+    def test_request_with_no_data_and_headers(self):
+        self.opener._response = DummyRawResponse(status=200, content=b"done")
+        resp = self.session.post("http://example.com", data=None, headers=None)
+        self.assertEqual(resp.status, 200)
+
+    def test_request_timeout_argument(self):
+        dummy_content = b"timeout test"
+        dummy_response = DummyRawResponse(status=200, content=dummy_content)
+        self.opener._response = dummy_response
+        resp = self.session.get("http://timeout.com", timeout=10)
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.content(), dummy_content)
+
+    def test_request_with_unusual_headers(self):
+        headers = {"X-Custom": "abc", "Content-Length": "10"}
+        self.opener._response = DummyRawResponse(status=200, content=b"x" * 10, headers=headers)
+        resp = self.session.get("http://example.com", headers=headers)
+        self.assertEqual(resp.headers.get("X-Custom"), "abc")
+        self.assertEqual(resp.headers.get("Content-Length"), "10")
+
+    def test_request_streaming_false_and_true(self):
+        self.opener._response = DummyRawResponse(status=200, content=b"streamtest")
+        resp = self.session.get("http://example.com", stream=False)
+        self.assertEqual(resp.content(), b"streamtest")
+
+        self.opener._response = DummyRawResponse(status=200, content=b"streamtest")
+        resp = self.session.get("http://example.com", stream=True)
+        self.assertEqual(b"".join(resp.iter_content(5)), b"streamtest")
+

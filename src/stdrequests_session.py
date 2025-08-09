@@ -4,9 +4,8 @@ import json
 import time
 import asyncio
 import base64
-from typing import Any, Optional, Dict, Union, Generator, AsyncGenerator, Tuple, cast
+from typing import Any, Optional, Dict, Union, AsyncGenerator, Tuple, cast, Iterator
 import http.cookiejar
-from http.client import HTTPResponse as _HTTPClientResponse
 from urllib.error import URLError, HTTPError
 
 
@@ -49,17 +48,21 @@ class HTTPResponse:
                 self._cached_content = self._raw.read()
         return cast(bytes, self._cached_content)
 
-    def iter_content(self, chunk_size: Optional[int] = 8192) -> Generator[bytes, None, None]:
-        """Sync chunked iterator for streaming responses."""
-        # Defensive fallback if chunk_size is None or invalid
-        if chunk_size is None or chunk_size <= 0:
-            chunk_size = 8192
+    def iter_content(self, chunk_size: Optional[int] = 1024) -> Iterator[bytes]:
+        if not self._stream or self._raw is None:
+            yield self.content()
+            return
 
-        if not self._stream and self._cached_content is not None:
-            # yield from cache in chunks
-            content = self._cached_content
-            for i in range(0, len(content), chunk_size):
-                yield content[i : i + chunk_size]
+        if chunk_size is None:
+            # Read all content at once and yield it once
+            chunk = self._raw.read()
+            if chunk:
+                yield chunk
+            return
+
+        if chunk_size <= 0:
+            # Yield empty bytes and stop
+            yield b""
             return
 
         while True:
