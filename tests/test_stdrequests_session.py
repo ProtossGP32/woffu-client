@@ -1,5 +1,5 @@
 import json
-from typing import Optional, Union, Dict, Iterable, Protocol, runtime_checkable, Any
+from typing import Optional, Union, Dict, Iterable, Protocol, runtime_checkable, Any, cast, List
 from unittest import TestCase
 from unittest.mock import Mock, patch
 from io import BytesIO
@@ -58,6 +58,13 @@ class DummyHTTPError(HTTPError):
         # If hdrs is None, pass an empty HTTPMessage to avoid Pylance error
         hdrs_non_none = hdrs if hdrs is not None else HTTPMessage()
         super().__init__(url, code, msg, hdrs_non_none, fp)
+
+
+class MalformedStr(str):
+    def split(self, sep=None, maxsplit=-1):
+        if sep == "charset=":
+            raise Exception("forced exception")
+        return super().split(sep, maxsplit)
 
 
 # Define a Protocol for something that supports .read()
@@ -206,12 +213,43 @@ class TestHTTPResponse(TestCase):
         # Should yield the content() which is b""
         self.assertEqual(chunks, [b""])
 
+    def test_httpresponse_text_malformed_charset(self) -> None:
+        headers = cast(dict[str, str], {"Content-Type": MalformedStr("text/html; charset=utf-8")})
+        resp = HTTPResponse(raw_resp=BytesIO(b"test"), status=200, headers=headers)
+        # It should not raise, fallback encoding 'utf-8' used
+        text = resp.text()
+        assert text == "test"
 
 class TestSession(TestCase):
+
     def setUp(self) -> None:
         self.session: Session = Session()
         self.opener: DummyOpener = DummyOpener()
         self.session.opener = self.opener
+        self.called_method: str = ""
+        self.called_url: str = ""
+
+    def _run_async(self, coro: Any) -> Any:
+        """Helper to run async coroutines in sync test methods."""
+        return asyncio.run(coro)
+    
+    def _patch_async_request(self, return_status: int, return_text: str) -> None:
+        """Helper to replace async_request on self.session."""
+
+        async def fake_async_request(method: str, url: str, **kwargs: Any) -> Any:
+            self.called_method = method
+            self.called_url = url
+
+            class FakeResp:
+                status: int = return_status
+
+                def text(self) -> str:
+                    return return_text
+
+            return FakeResp()
+
+        # Patch the method directly on the session instance
+        self.session.async_request = fake_async_request  # type: ignore
 
     def test_request_success(self) -> None:
         dummy_content = b"Hello, world!"
@@ -492,12 +530,67 @@ class TestSession(TestCase):
         self.assertEqual(resp.status, 200)
         self.assertEqual(resp.content(), b"ok")
 
-
     def test_request_with_headers_none(self) -> None:
         self.opener._response = DummyRawResponse(status=200, content=b"ok")
         resp = self.session.request("GET", "http://example.com", headers=None)
         self.assertEqual(resp.status, 200)
         self.assertEqual(resp.content(), b"ok")
+
+    def test_request_with_params(self) -> None:
+        called_urls: List[str] = []
+
+        # Match the signature of OpenerDirector.open(fullurl, data=None, timeout=None)
+        def fake_open(fullurl, data=None, timeout=None):
+            # fullurl can be str or Request object
+            url = fullurl.full_url if hasattr(fullurl, "full_url") else fullurl
+            called_urls.append(url)
+
+            class FakeRawResp:
+                def getcode(self): return 200
+                def getheaders(self): return []
+                def read(self): return b"{}"
+
+            return FakeRawResp()
+    
+        # Save original method to restore later
+        original_open = self.session.opener.open
+
+        try:
+            # Replace the opener.open method with our fake_open
+            self.session.opener.open = fake_open
+
+            # URL without query
+            resp = self.session.request("GET", "http://example.com/api", params={"a": "1", "b": "2"})
+            self.assertIn("?", called_urls[-1])
+            self.assertIn("a=1", called_urls[-1])
+            self.assertIn("b=2", called_urls[-1])
+
+            # URL with existing query
+            resp = self.session.request("GET", "http://example.com/api?x=5", params={"a": "1"})
+            self.assertIn("&", called_urls[-1])
+            self.assertIn("x=5", called_urls[-1])
+        finally:
+            self.session.opener.open = original_open
+
+    def test_request_defensive_fallback_range_empty(self):
+
+        # Define a local 'range' that yields nothing to simulate empty retry loop
+        def empty_range(*args, **kwargs):
+            return iter(())
+
+        # Save original range for later restoration
+        import builtins
+        original_range = builtins.range
+
+        try:
+            # Override builtins.range locally inside this test
+            builtins.range = empty_range
+
+            with self.assertRaises(RuntimeError):
+                self.session.request("GET", "http://example.com")
+        finally:
+            # Restore original range
+            builtins.range = original_range
 
     def test_http_error_with_other_codes(self) -> None:
         for code in [400, 401, 500, 503]:
@@ -509,3 +602,62 @@ class TestSession(TestCase):
                 self.assertEqual(resp.status, code)
                 self.assertEqual(resp.headers.get("X-Test"), f"code-{code}")
 
+    def test_async_get(self) -> None:
+        self._patch_async_request(200, "get_ok")
+
+        async def run_test() -> None:
+            resp = await self.session.async_get("http://example.com")
+            self.assertEqual(resp.status, 200)
+            self.assertEqual(resp.text(), "get_ok")
+            self.assertEqual(self.called_method, "GET")
+            self.assertEqual(self.called_url, "http://example.com")
+
+        self._run_async(run_test())
+
+    def test_async_post(self) -> None:
+        self._patch_async_request(201, "post_ok")
+
+        async def run_test() -> None:
+            resp = await self.session.async_post("http://example.com", data={"key": "value"})
+            self.assertEqual(resp.status, 201)
+            self.assertEqual(resp.text(), "post_ok")
+            self.assertEqual(self.called_method, "POST")
+            self.assertEqual(self.called_url, "http://example.com")
+
+        self._run_async(run_test())
+
+    def test_async_put(self) -> None:
+        self._patch_async_request(202, "put_ok")
+
+        async def run_test() -> None:
+            resp = await self.session.async_put("http://example.com")
+            self.assertEqual(resp.status, 202)
+            self.assertEqual(resp.text(), "put_ok")
+            self.assertEqual(self.called_method, "PUT")
+            self.assertEqual(self.called_url, "http://example.com")
+
+        self._run_async(run_test())
+
+    def test_async_patch(self) -> None:
+        self._patch_async_request(200, "patch_ok")
+
+        async def run_test() -> None:
+            resp = await self.session.async_patch("http://example.com")
+            self.assertEqual(resp.status, 200)
+            self.assertEqual(resp.text(), "patch_ok")
+            self.assertEqual(self.called_method, "PATCH")
+            self.assertEqual(self.called_url, "http://example.com")
+
+        self._run_async(run_test())
+
+    def test_async_delete(self) -> None:
+        self._patch_async_request(204, "delete_ok")
+
+        async def run_test() -> None:
+            resp = await self.session.async_delete("http://example.com")
+            self.assertEqual(resp.status, 204)
+            self.assertEqual(resp.text(), "delete_ok")
+            self.assertEqual(self.called_method, "DELETE")
+            self.assertEqual(self.called_url, "http://example.com")
+
+        self._run_async(run_test())
