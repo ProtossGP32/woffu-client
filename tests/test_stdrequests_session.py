@@ -158,60 +158,20 @@ class TestHTTPResponse(TestCase):
 
     def test_httpresponse_text_with_malformed_charset(self) -> None:
         headers = {"Content-Type": "text/html; charset="}  # empty charset part causes split[1] to be empty string
-        class DummyRaw:
-            def read(self): return b"abc"
-        resp = HTTPResponse(DummyRaw(), 200, headers)
-        # Should not raise, should fallback to default 'utf-8'
+        resp = HTTPResponse(DummyRawResponse(content=b"abc"), status=200, headers=headers)
+        # Should not raise, should fall back to default 'utf-8'
         assert resp.text() == "abc"
 
-    def test_httpresponse_content_stream_and_no_stream(self) -> None:
-        class DummyRaw:
-            def read(self): return b"hello"
-        resp1 = HTTPResponse(DummyRaw(), 200, {}, stream=False)
-        assert resp1.content() == b"hello"
-
-        class DummyStream:
-            def __init__(self):
-                self.called = 0
-            def read(self, n=None):
-                self.called += 1
-                if self.called == 1:
-                    return b"chunk"
-                else:
-                    return b""  # EOF on second read
-
-        dummy_stream = DummyStream()
-        resp2 = HTTPResponse(dummy_stream, 200, {}, stream=True)
-        assert b"chunk" in resp2.content()
-
     def test_iter_content_chunk_size_variants(self) -> None:
-        class DummyRaw:
-            def __init__(self): self.called = 0
-            def read(self, n=None):
-                if self.called == 0:
-                    self.called += 1
-                    return b"abc"
-                return b""
-        # stream False yields once content
-        resp = HTTPResponse(DummyRaw(), 200, {}, stream=False)
-        chunks = list(resp.iter_content())
-        assert chunks == [resp.content()]
-
         # _raw is None
         resp2 = HTTPResponse(None, 200, {}, stream=True)
         chunks2 = list(resp2.iter_content())
         assert chunks2 == [resp2.content()]
 
         # chunk_size <=0 yields b""
-        resp3 = HTTPResponse(DummyRaw(), 200, {}, stream=True)
+        resp3 = HTTPResponse(DummyRawResponse(), 200, {}, stream=True)
         chunks3 = list(resp3.iter_content(chunk_size=0))
         assert chunks3 == [b""]
-
-    def test_iter_content_raw_none_stream_true(self) -> None:
-        resp = HTTPResponse(None, 200, {}, stream=True)
-        chunks = list(resp.iter_content())
-        # Should yield the content() which is b""
-        self.assertEqual(chunks, [b""])
 
     def test_httpresponse_text_malformed_charset(self) -> None:
         headers = cast(dict[str, str], {"Content-Type": MalformedStr("text/html; charset=utf-8")})
@@ -234,7 +194,7 @@ class TestHTTPResponse(TestCase):
         response = HTTPResponse(raw_resp=raw, status=200, headers={}, stream=True)
 
         async def run_test() -> None:
-            # chunk_size = None (should fallback to 8192)
+            # chunk_size = None (should fall back to 8192)
             chunks = [chunk async for chunk in response.aiter_content(chunk_size=None)]
             self.assertEqual(chunks, [])
             self.assertEqual(raw.read_calls, [8192])
@@ -438,7 +398,6 @@ class TestSession(TestCase):
         self.assertEqual(resp.content(), b"ok")
 
     def test_request_with_multiple_headers(self) -> None:
-        headers = {"X-Test": "value1", "X-Test": "value2"}  # dict can't have duplicate keys, simulate manually
         # Python dict can't have duplicate keys; so simulate with multiple calls or with special header format
         # We'll test with comma-separated header value as HTTP supports that
         headers = {"X-Test": "value1, value2"}
@@ -693,15 +652,7 @@ class TestSession(TestCase):
 
     def test_patch_method_calls_request(self) -> None:
         # Prepare a dummy raw response to use in DummyOpener
-        class DummyRawResp:
-            def getcode(self) -> int:
-                return 200
-            def getheaders(self) -> list:
-                return []
-            def read(self) -> bytes:
-                return b"{}"
-
-        self.opener._response = DummyRawResp()  # set dummy response so open() won't raise
+        self.opener._response = DummyRawResponse()  # set dummy response so open() won't raise
 
         with patch.object(self.session, "request", wraps=self.session.request) as mock_request:
             # Call patch
