@@ -172,8 +172,14 @@ class Session:
                 body_bytes = json.dumps(data).encode("utf-8")
             elif isinstance(data, str):
                 body_bytes = data.encode("utf-8")
-            elif isinstance(data, bytes):
-                body_bytes = data
+            elif isinstance(data, (bytes, bytearray, memoryview)):
+                # Accept bytearray and memoryview as raw bytes
+                body_bytes = bytes(data)  # convert to bytes if needed
+            elif hasattr(data, "read") and callable(data.read):
+                # Assume file-like, read bytes
+                body_bytes = data.read()
+                if not isinstance(body_bytes, bytes):
+                    raise TypeError("file-like object's read() must return bytes")
             else:
                 raise TypeError("data must be dict, str, or bytes")
 
