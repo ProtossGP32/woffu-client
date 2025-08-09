@@ -200,6 +200,13 @@ class TestHTTPResponse(TestCase):
         chunks3 = list(resp3.iter_content(chunk_size=0))
         assert chunks3 == [b""]
 
+    def test_iter_content_raw_none_stream_true(self) -> None:
+        resp = HTTPResponse(None, 200, {}, stream=True)
+        chunks = list(resp.iter_content())
+        # Should yield the content() which is b""
+        self.assertEqual(chunks, [b""])
+
+
 class TestSession(TestCase):
     def setUp(self) -> None:
         self.session: Session = Session()
@@ -343,6 +350,20 @@ class TestSession(TestCase):
 
         self.assertIn(b"string data", data_bytes)
 
+    def test_request_with_file_like_data(self) -> None:
+        # file-like object with read() returning bytes
+        file_like = BytesIO(b"file contents")
+        self.opener._response = DummyRawResponse(status=200, content=b"ok")
+        resp = self.session.post("http://example.com", data=file_like)
+        assert resp.status == 200  # or your dummy success
+
+    def test_request_with_file_like_read_returns_non_bytes(self) -> None:
+        class BadFileLike:
+            def read(self):
+                return "not bytes"
+        with pytest.raises(TypeError):
+            self.session.post("http://example.com", data=BadFileLike())
+
     def test_request_with_empty_headers_dict(self) -> None:
         self.opener._response = DummyRawResponse(status=200, content=b"ok")
         resp = self.session.get("http://example.com", headers={})
@@ -442,3 +463,49 @@ class TestSession(TestCase):
         self.session.opener.close = close_mock
         self.session.close()
         assert close_mock.called
+
+    def test_request_with_iterable_data(self) -> None:
+        data = (chunk for chunk in [b"chunk1", b"chunk2"])
+        self.opener._response = DummyRawResponse(status=200, content=b"ok")
+        resp = self.session.post("http://example.com", data=data)
+        self.assertEqual(resp.status, 200)
+        called_req = self.opener.called_with
+        self.assertIsNotNone(called_req)
+        # The data should be bytes of concatenated chunks
+        if called_req is not None:
+            self.assertIn(b"chunk1chunk2", called_req.data if isinstance(called_req.data, bytes) else b"")
+
+    def test_request_with_auth_argument(self) -> None:
+        self.opener._response = DummyRawResponse(status=200, content=b"ok")
+        resp = self.session.get("http://example.com", auth=("user", "pass"))
+        self.assertEqual(resp.status, 200)
+        called_req = self.opener.called_with
+        self.assertIsNotNone(called_req)
+        # Authorization header should be present in the request
+        if called_req is not None:
+            self.assertTrue("Authorization" in called_req.headers or "authorization" in called_req.headers)
+
+    def test_request_passes_timeout(self) -> None:
+        dummy_response = DummyRawResponse(status=200, content=b"ok")
+        self.opener._response = dummy_response
+        resp = self.session.request("GET", "http://example.com", timeout=7)
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.content(), b"ok")
+
+
+    def test_request_with_headers_none(self) -> None:
+        self.opener._response = DummyRawResponse(status=200, content=b"ok")
+        resp = self.session.request("GET", "http://example.com", headers=None)
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.content(), b"ok")
+
+    def test_http_error_with_other_codes(self) -> None:
+        for code in [400, 401, 500, 503]:
+            headers = HTTPMessage()
+            headers.add_header("X-Test", f"code-{code}")
+            error = HTTPError("http://example.com", code, "Error", hdrs=headers, fp=None)
+            with patch.object(self.session.opener, "open", side_effect=error):
+                resp = self.session.request("GET", "http://example.com")
+                self.assertEqual(resp.status, code)
+                self.assertEqual(resp.headers.get("X-Test"), f"code-{code}")
+

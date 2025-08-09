@@ -5,6 +5,7 @@ import time
 import asyncio
 import base64
 from typing import Any, Optional, Dict, Union, AsyncGenerator, Tuple, cast, Iterator
+from collections.abc import Iterable
 import http.cookiejar
 from urllib.error import URLError, HTTPError
 
@@ -180,6 +181,9 @@ class Session:
                 body_bytes = data.read()
                 if not isinstance(body_bytes, bytes):
                     raise TypeError("file-like object's read() must return bytes")
+            elif isinstance(data, Iterable):
+                # Accept iterable of bytes chunks; join them
+                body_bytes = b"".join(data)
             else:
                 raise TypeError("data must be dict, str, or bytes")
 
