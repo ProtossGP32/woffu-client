@@ -1,4 +1,3 @@
-# stdrequests_session.py
 import urllib.request
 import urllib.parse
 import json
@@ -12,33 +11,55 @@ from urllib.error import URLError, HTTPError
 
 
 class HTTPResponse:
-    def __init__(self, raw_resp: Any, status: int, headers: dict, stream: bool = False):
+    _raw: Any
+    status: int
+    headers: Dict[str, str]
+    _stream: bool
+    _cached_content: Optional[bytes]
+
+    def __init__(self, raw_resp: Any, status: int, headers: Dict[str, str], stream: bool = False) -> None:
         self._raw = raw_resp
         self.status = status
         self.headers = headers
         self._stream = stream
-        self._content_cache = None
+        self._cached_content = None
 
     def text(self) -> str:
-        return self.content().decode("utf-8", errors="replace")
+        """Return response body decoded to text respecting charset if any."""
+        encoding = "utf-8"
+        content_type = self.headers.get("Content-Type", "")
+        if "charset=" in content_type:
+            try:
+                encoding = content_type.split("charset=")[1].split(";")[0].strip()
+            except Exception:
+                pass
+        return self.content().decode(encoding, errors="replace")
 
     def json(self) -> Any:
+        """Parse response body as JSON."""
         return json.loads(self.text())
 
     def content(self) -> bytes:
-        if self._stream:
-            raise RuntimeError("Use iter_content() when stream=True")
-        if self._content_cache is None:
-            # read all
-            self._content_cache = self._raw.read()
-        return self._content_cache
+        """Return the entire response body as bytes."""
+        if self._cached_content is None:
+            if self._stream:
+                # Read all at once if stream=True by consuming the iterator
+                self._cached_content = b"".join(self.iter_content())
+            else:
+                self._cached_content = self._raw.read()
+        return cast(bytes, self._cached_content)
 
-    def iter_content(self, chunk_size: int = 8192) -> Generator[bytes, None, None]:
+    def iter_content(self, chunk_size: Optional[int] = 8192) -> Generator[bytes, None, None]:
         """Sync chunked iterator for streaming responses."""
-        if not self._stream and self._content_cache is not None:
-            # yield from cache
-            for i in range(0, len(self._content_cache), chunk_size):
-                yield self._content_cache[i : i + chunk_size]
+        # Defensive fallback if chunk_size is None or invalid
+        if chunk_size is None or chunk_size <= 0:
+            chunk_size = 8192
+
+        if not self._stream and self._cached_content is not None:
+            # yield from cache in chunks
+            content = self._cached_content
+            for i in range(0, len(content), chunk_size):
+                yield content[i : i + chunk_size]
             return
 
         while True:
@@ -47,8 +68,12 @@ class HTTPResponse:
                 break
             yield chunk
 
-    async def aiter_content(self, chunk_size: int = 8192) -> AsyncGenerator[bytes, None]:
+    async def aiter_content(self, chunk_size: Optional[int] = 8192) -> AsyncGenerator[bytes, None]:
         """Async chunked iterator (reads in thread to avoid blocking event loop)."""
+        # Defensive fallback if chunk_size is None or invalid
+        if chunk_size is None or chunk_size <= 0:
+            chunk_size = 8192
+
         while True:
             chunk = await asyncio.to_thread(self._raw.read, chunk_size)
             if not chunk:
@@ -57,6 +82,15 @@ class HTTPResponse:
 
 
 class Session:
+    headers: Dict[str, str]
+    params: Dict[str, str]
+    timeout: int
+    retries: int
+    stream: bool
+    _cookie_jar: http.cookiejar.CookieJar
+    _opener: urllib.request.OpenerDirector
+    opener: urllib.request.OpenerDirector
+
     def __init__(
         self,
         headers: Optional[Dict[str, str]] = None,
@@ -64,7 +98,7 @@ class Session:
         timeout: int = 10,
         retries: int = 3,
         stream: bool = False,
-    ):
+    ) -> None:
         self.headers = dict(headers or {})
         self.params = dict(params or {})
         self.timeout = timeout
@@ -75,13 +109,13 @@ class Session:
         self._cookie_jar = http.cookiejar.CookieJar()
         self._opener = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(self._cookie_jar),
-            urllib.request.HTTPRedirectHandler()
+            urllib.request.HTTPRedirectHandler(),
         )
 
         # Allow user to set a custom opener later if desired
         self.opener = self._opener
 
-    def _apply_auth_header(self, headers: Dict[str, str], auth: Optional[Tuple[str, str]]):
+    def _apply_auth_header(self, headers: Dict[str, str], auth: Optional[Tuple[str, str]]) -> None:
         if auth:
             user, pwd = auth
             token = base64.b64encode(f"{user}:{pwd}".encode("utf-8")).decode("ascii")
@@ -117,7 +151,7 @@ class Session:
             url = url + ("&" if "?" in url else "?") + urllib.parse.urlencode(final_params)
 
         # Prepare body
-        body_bytes = None
+        body_bytes: Optional[bytes] = None
         if data is not None:
             if isinstance(data, dict):
                 final_headers.setdefault("Content-Type", "application/json")
@@ -129,19 +163,18 @@ class Session:
             else:
                 raise TypeError("data must be dict, str, or bytes")
 
-        last_exc = None
+        last_exc: Optional[Exception] = None
         for attempt in range(retries):
             try:
-                req = urllib.request.Request(url, data=body_bytes, headers=final_headers, method=method.upper())
+                req = urllib.request.Request(
+                    url, data=body_bytes, headers=final_headers, method=method.upper()
+                )
                 raw_resp = self.opener.open(req, timeout=timeout)
-                # raw_resp is an http.client.HTTPResponse-like object
                 return HTTPResponse(raw_resp, raw_resp.getcode(), dict(raw_resp.getheaders()), stream=stream)
             except (HTTPError, URLError, OSError) as e:
                 last_exc = e
-                # If it's an HTTPError with a status code, return it (mimic requests behavior)
                 if isinstance(e, HTTPError):
-                    # Cast e to Any to satisfy type checker despite signature mismatch
-                    raw_resp = cast(Any, e)
+                    raw_resp = cast(Any, e)  # e acts like response
                     return HTTPResponse(raw_resp, e.code, dict(e.headers or {}), stream=stream)
                 if attempt < retries - 1:
                     time.sleep(1)
@@ -152,44 +185,44 @@ class Session:
         raise RuntimeError("Request failed unexpectedly without raising an exception")
 
     # Convenience sync methods
-    def get(self, url: str, **kwargs) -> HTTPResponse:
+    def get(self, url: str, **kwargs: Any) -> HTTPResponse:
         return self.request("GET", url, **kwargs)
 
-    def post(self, url: str, **kwargs) -> HTTPResponse:
+    def post(self, url: str, **kwargs: Any) -> HTTPResponse:
         return self.request("POST", url, **kwargs)
 
-    def put(self, url: str, **kwargs) -> HTTPResponse:
+    def put(self, url: str, **kwargs: Any) -> HTTPResponse:
         return self.request("PUT", url, **kwargs)
 
-    def patch(self, url: str, **kwargs) -> HTTPResponse:
+    def patch(self, url: str, **kwargs: Any) -> HTTPResponse:
         return self.request("PATCH", url, **kwargs)
 
-    def delete(self, url: str, **kwargs) -> HTTPResponse:
+    def delete(self, url: str, **kwargs: Any) -> HTTPResponse:
         return self.request("DELETE", url, **kwargs)
 
     # Async wrappers using asyncio.to_thread to avoid blocking the event loop
-    async def async_request(self, method: str, url: str, **kwargs) -> HTTPResponse:
+    async def async_request(self, method: str, url: str, **kwargs: Any) -> HTTPResponse:
         return await asyncio.to_thread(self.request, method, url, **kwargs)
 
-    async def async_get(self, url: str, **kwargs) -> HTTPResponse:
+    async def async_get(self, url: str, **kwargs: Any) -> HTTPResponse:
         return await self.async_request("GET", url, **kwargs)
 
-    async def async_post(self, url: str, **kwargs) -> HTTPResponse:
+    async def async_post(self, url: str, **kwargs: Any) -> HTTPResponse:
         return await self.async_request("POST", url, **kwargs)
 
-    async def async_put(self, url: str, **kwargs) -> HTTPResponse:
+    async def async_put(self, url: str, **kwargs: Any) -> HTTPResponse:
         return await self.async_request("PUT", url, **kwargs)
 
-    async def async_patch(self, url: str, **kwargs) -> HTTPResponse:
+    async def async_patch(self, url: str, **kwargs: Any) -> HTTPResponse:
         return await self.async_request("PATCH", url, **kwargs)
 
-    async def async_delete(self, url: str, **kwargs) -> HTTPResponse:
+    async def async_delete(self, url: str, **kwargs: Any) -> HTTPResponse:
         return await self.async_request("DELETE", url, **kwargs)
 
     # Context manager support
-    def __enter__(self):
+    def __enter__(self) -> "Session":
         return self
 
-    def __exit__(self, exc_type, exc, tb):
+    def __exit__(self, exc_type: Optional[type], exc: Optional[BaseException], tb: Optional[Any]) -> bool:
         # nothing special to close; cookiejar/opener don't need explicit close
         return False

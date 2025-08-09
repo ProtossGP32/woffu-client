@@ -1,9 +1,10 @@
+import json
 from unittest import TestCase
 from io import BytesIO
 from urllib.error import HTTPError
 from http.client import HTTPMessage
-from src.stdrequests_session import Session, HTTPResponse
 from urllib.request import Request, OpenerDirector
+from src.stdrequests_session import Session, HTTPResponse
 
 
 class DummyRawResponse:
@@ -24,7 +25,6 @@ class DummyRawResponse:
         return self._status
 
     def getheaders(self):
-        # Return headers as list of tuples, as real HTTPResponse does
         return list(self._headers.items())
 
     def close(self):
@@ -32,7 +32,7 @@ class DummyRawResponse:
 
 
 class DummyOpener(OpenerDirector):
-    _response: object  # Explicitly type _response to accept DummyRawResponse
+    _response: object
     called_with: Request | None
 
     def __init__(self):
@@ -50,7 +50,7 @@ class DummyOpener(OpenerDirector):
 class DummyHTTPError(HTTPError):
     def __init__(self, url, code, msg, hdrs, fp=None):
         if fp is None:
-            fp = BytesIO(b"")  # Provide a dummy non-None file-like object
+            fp = BytesIO(b"")
         super().__init__(url, code, msg, hdrs, fp)
 
 
@@ -68,17 +68,27 @@ class TestHTTPResponse(TestCase):
         raw = DummyRawResponse(content=content)
         resp = HTTPResponse(raw, 200, {}, stream=False)
         self.assertEqual(resp.content(), content)
-
-        # Test iter_content yields the content in chunks
         chunks = list(resp.iter_content(chunk_size=3))
         self.assertEqual(b"".join(chunks), content)
 
-    def test_iter_content_streaming(self):
+    def test_iter_content_streaming_and_none_chunk_size(self):
         content = b"abcdefgh"
         raw = DummyRawResponse(content=content)
         resp = HTTPResponse(raw, 200, {}, stream=True)
-        chunks = list(resp.iter_content(chunk_size=3))
+        chunks = list(resp.iter_content(chunk_size=None))
         self.assertEqual(b"".join(chunks), content)
+
+    def test_json_invalid_raises(self):
+        raw = DummyRawResponse(content=b"not json", headers={"Content-Type": "application/json"})
+        resp = HTTPResponse(raw, 200, {})
+        with self.assertRaises(json.JSONDecodeError):
+            resp.json()
+
+    def test_text_with_charset(self):
+        content = "café".encode("latin-1")
+        raw = DummyRawResponse(content=content, headers={"Content-Type": "text/plain; charset=latin-1"})
+        resp = HTTPResponse(raw, 200, {"Content-Type": "text/plain; charset=latin-1"})
+        self.assertEqual(resp.text(), "café")
 
 
 class TestSession(TestCase):
@@ -111,7 +121,6 @@ class TestSession(TestCase):
             hdrs=dummy_headers,
             fp=dummy_fp,
         )
-        self.opener._response = None  # Not used in this test
 
         def raise_http_error(req, timeout=None):
             raise dummy_error
@@ -121,3 +130,47 @@ class TestSession(TestCase):
         self.assertEqual(resp.status, 404)
         self.assertEqual(resp.content(), b"error content")
         self.assertEqual(resp.headers.get("Content-Type"), "text/plain")
+
+    def test_http_error_without_fp(self):
+        dummy_headers = HTTPMessage()
+        dummy_headers.add_header("X-Test", "yes")
+        dummy_error = DummyHTTPError(
+            url="http://example.com/error",
+            code=500,
+            msg="Server Error",
+            hdrs=dummy_headers,
+            fp=None
+        )
+
+        def raise_http_error(req, timeout=None):
+            raise dummy_error
+
+        self.opener.open = raise_http_error
+        resp = self.session.get("http://example.com/error")
+        self.assertEqual(resp.status, 500)
+        self.assertEqual(resp.headers.get("X-Test"), "yes")
+
+    def test_other_exception_handling(self):
+        def raise_generic(req, timeout=None):
+            raise ValueError("Unexpected")
+
+        self.opener.open = raise_generic
+        with self.assertRaises(ValueError):
+            self.session.get("http://example.com")
+
+    def test_post_put_delete_methods(self):
+        self.opener._response = DummyRawResponse(status=201, content=b"ok")
+        self.assertEqual(self.session.post("http://x.com", data=b"abc").status, 201)
+        self.assertEqual(self.session.put("http://x.com", data=b"abc").status, 201)
+        self.assertEqual(self.session.delete("http://x.com").status, 201)
+
+    def test_streaming_request(self):
+        content = b"streamed data"
+        self.opener._response = DummyRawResponse(status=200, content=content)
+        resp = self.session.get("http://example.com", stream=True)
+        self.assertEqual(b"".join(resp.iter_content(5)), content)
+
+    def test_request_with_headers_and_timeout(self):
+        self.opener._response = DummyRawResponse(status=200, content=b"ok")
+        resp = self.session.get("http://example.com", headers={"X-Test": "yes"}, timeout=5)
+        self.assertEqual(resp.status, 200)
