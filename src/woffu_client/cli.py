@@ -4,6 +4,9 @@ import sys
 from pathlib import Path
 from woffu_client import WoffuAPIClient  # adjust import path
 
+DEFAULT_CONFIG = Path.home() / ".config/woffu/woffu_auth.json"
+DEFAULT_OUTPUT_DIR = Path.home() / "Documents/woffu/docs"
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="woffu-cli",
@@ -13,8 +16,9 @@ def main() -> None:
     parser.add_argument(
         "--config",
         required=False,
-        help=f"Authentication file path (default: {Path.joinpath(Path.home(), ".config/woffu/woffu_auth.json")})",
-        default=Path.joinpath(Path.home(), ".config/woffu/woffu_auth.json")
+        type=Path,
+        help=f"Authentication file path (default: {DEFAULT_CONFIG})",
+        default=DEFAULT_CONFIG
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -26,8 +30,8 @@ def main() -> None:
     dl_parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path.joinpath(Path.home(), "Documents/woffu/docs"),
-        help=f"Directory to save downloaded files (default: {Path.joinpath(Path.home(), "Documents/woffu/docs")})"
+        default=DEFAULT_OUTPUT_DIR,
+        help=f"Directory to save downloaded files (default: {DEFAULT_OUTPUT_DIR})"
     )
 
     args = parser.parse_args()
