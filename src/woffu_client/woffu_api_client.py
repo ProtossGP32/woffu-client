@@ -1,9 +1,9 @@
 from operator import itemgetter
-import os
 import sys
 import json
 import logging
 from .stdrequests_session import Session
+from pathlib import Path
 
 # Initialize a logger
 logger = logging.getLogger(__name__)
@@ -42,8 +42,12 @@ class WoffuAPIClient(Session):
         Load Woffu credentials stored in provided file
         """
         # Update the config file path if a new one is provided
-        if creds_file and os.path.exists(creds_file):
-            self._config_file = creds_file
+        if creds_file:
+            self._config_file = Path(creds_file)
+        
+        if not self._config_file.exists():
+            logger.error(f"Config file '{self._config_file}' doesn't exist! Exiting")
+            sys.exit(1)
 
         with open(self._config_file, "r") as f:
             creds_info = json.load(f)
@@ -70,16 +74,12 @@ class WoffuAPIClient(Session):
         self._token: str = ""
         self._user_id: str = ""
         self._company_id: str = ""
-        self._config_file: str = ""
+        self._config_file: Path = Path(kwargs["config"]) if "config" in kwargs else Path.joinpath(Path.home(), ".config/woffu/woffu_auth.json")
         self._headers: dict[str, str] = {}
-        self._documents_path : str = kwargs["documents_path"] if "documents_path" in kwargs else "~/Documents/woffu/docs"
+        self._documents_path : Path = Path(kwargs["documents_path"]) if "documents_path" in kwargs else Path.joinpath(Path.home(), "Documents/woffu/docs")
 
         # load config file if provided
-        if "config" in kwargs and os.path.exists(kwargs["config"]):
-            self._config_file = kwargs["config"]
-            self._load_credentials()
-        else:
-            logger.error("No config file provided. Proceeding with manual authentication:")
+        self._load_credentials()
 
         super().__init__(headers=self._headers)
 
@@ -105,23 +105,27 @@ class WoffuAPIClient(Session):
         return []
     
 
-    def download_document(self, document: dict, output_path: str) -> None:
+    def download_document(self, document: dict, output_dir: str) -> None:
         """
         Download the document to the defined output_path 
         """
-        if not output_path:
-            output_path = self._documents_path
+        if output_dir:
+            output_path: Path = Path(output_dir)
+        else:
+            output_path: Path = self._documents_path
 
         # Compose the file path
-        document_path = os.path.join(output_path, document["Name"])
+        #document_path = os.path.join(output_path, document["Name"])
+        document_path = Path.joinpath(Path(output_path), document["Name"])
 
-        if os.path.exists(document_path):
+        if document_path.exists():
             logger.debug(f"Document '{document['Name']}' already exists in the documents folder, not downloading again")
             return
         
         # Create output path if it doesn't exist        
-        if not os.path.exists(output_path):
-            os.makedirs(name=output_path, exist_ok=True)
+        if not output_path.exists():
+            logger.debug(f"Creating output directory: {output_path}")
+            output_path.mkdir(parents=True, exist_ok=True)
 
         # Compose the download link
         document_url = f"https://{self._domain}/api/documents/{document['DocumentId']}/download2"
@@ -131,11 +135,11 @@ class WoffuAPIClient(Session):
         # Save the document
         if document_response.status == 200:
             logger.info(f"Saving '{document['Name']}'...")
-            with open(file=document_path, mode='bw') as f:
-                f.write(document_response.content())
-    
+            #with open(file=document_path, mode='bw') as f:
+            #    f.write(document_response.content())
+            document_path.write_bytes(document_response.content())
 
-    def download_all_documents(self, output_path: str = "") -> None:
+    def download_all_documents(self, output_dir: str = "") -> None:
         """
         Download all user's documents
         """
@@ -146,6 +150,6 @@ class WoffuAPIClient(Session):
         if documents_list:
             logger.info("Downloading all documents...")
             for document in documents_list:
-                self.download_document(document=document, output_path=output_path)
+                self.download_document(document=document, output_dir=output_dir)
             logger.info("All documents downloaded!")
 
