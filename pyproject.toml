@@ -23,7 +23,10 @@ dev = [
 Homepage = "https://github.com/ProtossGP32/woffu-client"
 
 [tool.setuptools]
-packages = ["src"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.coverage.run]
 branch = true

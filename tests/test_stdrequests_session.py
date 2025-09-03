@@ -6,7 +6,7 @@ from io import BytesIO
 from urllib.error import HTTPError, URLError
 from http.client import HTTPMessage
 from urllib.request import Request, OpenerDirector
-from src.stdrequests_session import Session, HTTPResponse
+from src.woffu_client.stdrequests_session import Session, HTTPResponse
 import pytest
 import asyncio
 
