@@ -12,6 +12,8 @@ logging.basicConfig(
     format="[%(asctime)s] %(levelname)s %(module)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+
+# TODO: Make log level configurable
 logger.setLevel("INFO")
 
 
@@ -141,6 +143,9 @@ class WoffuAPIClient(Session):
         documents_list = self.get_documents()
         
         # Iterate over all documents and download them
-        logger.info("Downloading all documents...")
-        for document in documents_list:
-            self.download_document(document=document, output_path=output_path)
+        if documents_list:
+            logger.info("Downloading all documents...")
+            for document in documents_list:
+                self.download_document(document=document, output_path=output_path)
+            logger.info("All documents downloaded!")
+
