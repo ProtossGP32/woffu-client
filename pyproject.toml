@@ -22,6 +22,9 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/ProtossGP32/woffu-client"
 
+[project.scripts]
+woffu-cli = "woffu_client.cli:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
