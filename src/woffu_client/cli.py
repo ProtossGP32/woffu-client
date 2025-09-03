@@ -38,15 +38,18 @@ def main() -> None:
 
     # Instantiate client
     client = WoffuAPIClient(config=args.config)
-
-    if args.command == "download-all-documents":
-        try:
-            args.output_dir.mkdir(parents=True, exist_ok=True)
-            client.download_all_documents(output_dir=args.output_dir)
-            print(f"✅ Files downloaded to {args.output_dir}")
-        except Exception as e:
-            print(f"❌ Error downloading files: {e}", file=sys.stderr)
-            sys.exit(1)
+    match args.command:
+        case "download-all-documents":
+            try:
+                args.output_dir.mkdir(parents=True, exist_ok=True)
+                client.download_all_documents(output_dir=args.output_dir)
+                print(f"✅ Files downloaded to {args.output_dir}")
+            except Exception as e:
+                print(f"❌ Error downloading files: {e}", file=sys.stderr)
+                sys.exit(1)
+        case _:
+            print(f"❌ Unknown command: {args.command}", file=sys.stderr)
+    
 
 if __name__ == "__main__":
     main()
