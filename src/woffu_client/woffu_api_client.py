@@ -17,6 +17,8 @@ logging.basicConfig(
 # TODO: Make log level configurable
 logger.setLevel("INFO")
 
+DEFAULT_CONFIG = Path.home() / ".config/woffu/woffu_auth.json"
+DEFAULT_DOCS_DIR = Path.home() / "Documents/woffu/docs"
 
 class WoffuAPIClient(Session):
     # Class arguments
@@ -94,6 +96,27 @@ class WoffuAPIClient(Session):
         logger.info(f"✅ Credentials stored in: {self._config_file}")
 
 
+    def _request_credentials(self):
+        """
+        Request all available information to compose credentials
+        """
+        self._username = input("Enter your Woffu username (mail):\n")
+        password = getpass(prompt="Enter your password:\n")
+
+        # Retrieve access token
+        self._retrieve_access_token(
+            username=self._username,
+            password=password
+        )
+
+        # Set authentication headers
+        self.headers=self._compose_auth_headers()
+        logger.info("Retrieving Company information...")
+
+        # Get Company information
+        self._get_domain_user_companyId()
+
+
     def _load_credentials(self, creds_file: str = "") -> None:
         """
         Load Woffu credentials stored in provided file
@@ -106,23 +129,7 @@ class WoffuAPIClient(Session):
             logger.error(f"Config file '{self._config_file}' doesn't exist!")
             if self._interactive:
                 logger.info("Manual request of authentication token.")
-                self._username = input("Enter your Woffu username (mail):\n")
-                password = getpass(prompt="Enter your password:\n")
-
-                # Retrieve access token
-                self._retrieve_access_token(
-                    username=self._username,
-                    password=password
-                )
-
-                # Set authentication headers
-                self.headers=self._compose_auth_headers()
-                logger.info("Retrieving Company information...")
-
-                # Get Company information
-                self._get_domain_user_companyId()
-
-                # TODO: store credentials in file
+                self._request_credentials()
                 self._save_credentials()
             else:
                 logger.error("Ensure you have a valid config file before executing this script. Exiting...")
@@ -159,8 +166,8 @@ class WoffuAPIClient(Session):
         self._token: str = ""
         self._user_id: str = ""
         self._company_id: str = ""
-        self._config_file: Path = Path(kwargs["config"]) if "config" in kwargs else Path.joinpath(Path.home(), ".config/woffu/woffu_auth.json")
-        self._documents_path : Path = Path(kwargs["documents_path"]) if "documents_path" in kwargs else Path.joinpath(Path.home(), "Documents/woffu/docs")
+        self._config_file: Path = Path(kwargs["config"]) if "config" in kwargs else DEFAULT_CONFIG
+        self._documents_path : Path = Path(kwargs["documents_path"]) if "documents_path" in kwargs else DEFAULT_DOCS_DIR
         self._interactive: bool = kwargs["interactive"] if "interactive" in kwargs else False
 
         # Initialize the parent class
