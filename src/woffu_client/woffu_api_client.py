@@ -4,6 +4,7 @@ import json
 import logging
 from .stdrequests_session import Session
 from pathlib import Path
+from getpass import getpass
 
 # Initialize a logger
 logger = logging.getLogger(__name__)
@@ -22,7 +23,34 @@ class WoffuAPIClient(Session):
     _woffu_api_url: str = "https://app.woffu.com"
 
 
-    def _retrieve_access_token(self, username: str = "", password: str = "") -> None:
+    def _get_domain_user_companyId(self):
+        """
+        Get the required Company ID, Domain and User ID, required for HTTP requests.
+        One-time only call; this data should be stored in a file and reused from there.
+        """
+        # This function should only be called the first time the script runs.
+        # We'll store the results for subsequent executions
+        logger.debug("Retrieving Company IDs...")
+        
+        # First we need the Company ID from the Users information
+        users = self.get(
+            url=f"{self._woffu_api_url}/api/users"
+        ).json()
+
+        # With that, we retrieve the company Domain
+        company = self.get(
+            url=f"{self._woffu_api_url}/api/companies/{users['CompanyId']}"
+        ).json()
+
+        # Set class arguments
+        self._domain = company["Domain"]
+        self._user_id, self._company_id = itemgetter(
+            'UserId',
+            'CompanyId'
+        )(users)
+
+
+    def _retrieve_access_token(self, username: str = "", password: str = ""):
         """
         Authentication process to retrieve token
         """
@@ -31,11 +59,40 @@ class WoffuAPIClient(Session):
             return
         
         logger.info("Requesting access token...")
-        response = self.post(
+        token_response = self.post(
             url=f"{self._woffu_api_url}/token",
-            data = f"grant_type=password&username={username}&password={password}"
+            data = {
+                "grant_type": "password",
+                "username": username,
+                "password": password
+            }
         )
+
+        if token_response.status == 200:
+            self._token = token_response.json()['access_token']
+        else:
+            logger.error(f"Can't retrieve access token. Please review username and password and try again. Error code: {token_response.status}")
+            self._token = ""
         
+
+    def _save_credentials(self):
+        """
+        Save the credentials in a config file for later use.
+        """
+        self._config_file.parent.mkdir(parents=True, exist_ok=True)
+        self._config_file.write_text(
+            data = json.dumps(
+                {
+                    "username": self._username,
+                    "token": self._token,
+                    "user_id": self._user_id,
+                    "company_id": self._company_id,
+                    "domain": self._domain
+                }
+            )
+        )
+        logger.info(f"✅ Credentials stored in: {self._config_file}")
+
 
     def _load_credentials(self, creds_file: str = "") -> None:
         """
@@ -46,24 +103,52 @@ class WoffuAPIClient(Session):
             self._config_file = Path(creds_file)
         
         if not self._config_file.exists():
-            logger.error(f"Config file '{self._config_file}' doesn't exist! Exiting")
-            sys.exit(1)
+            logger.error(f"Config file '{self._config_file}' doesn't exist!")
+            if self._interactive:
+                logger.info("Manual request of authentication token.")
+                self._username = input("Enter your Woffu username (mail):\n")
+                password = getpass(prompt="Enter your password:\n")
 
-        with open(self._config_file, "r") as f:
-            creds_info = json.load(f)
-            self._domain, self._username, self._token, self._user_id, self._company_id = itemgetter(
-                "domain",
-                "username",
-                "token",
-                "user_id",
-                "company_id"
-            )(creds_info)
+                # Retrieve access token
+                self._retrieve_access_token(
+                    username=self._username,
+                    password=password
+                )
 
-        # Compose the headers and store it in the Session.hearers attribute
-        self._headers = {
+                # Set authentication headers
+                self.headers=self._compose_auth_headers()
+                logger.info("Retrieving Company information...")
+
+                # Get Company information
+                self._get_domain_user_companyId()
+
+                # TODO: store credentials in file
+                self._save_credentials()
+            else:
+                logger.error("Ensure you have a valid config file before executing this script. Exiting...")
+                sys.exit(1)
+            
+        else:
+            with open(self._config_file, "r") as f:
+                creds_info = json.load(f)
+                self._domain, self._username, self._token, self._user_id, self._company_id = itemgetter(
+                    "domain",
+                    "username",
+                    "token",
+                    "user_id",
+                    "company_id"
+                )(creds_info)
+                # Set authentication headers
+                self.headers=self._compose_auth_headers()
+
+
+    def _compose_auth_headers(self) -> dict:
+        """
+        Compose the authentication headers
+        """
+        return {
             'Authorization': f"Bearer {self._token}",
             'Accept': 'application/json',
-            'Content-Type': 'application/json;charset=utf-8'
         }
 
 
@@ -76,13 +161,15 @@ class WoffuAPIClient(Session):
         self._company_id: str = ""
         self._config_file: Path = Path(kwargs["config"]) if "config" in kwargs else Path.joinpath(Path.home(), ".config/woffu/woffu_auth.json")
         self._documents_path : Path = Path(kwargs["documents_path"]) if "documents_path" in kwargs else Path.joinpath(Path.home(), "Documents/woffu/docs")
+        self._interactive: bool = kwargs["interactive"] if "interactive" in kwargs else False
+
+        # Initialize the parent class
+        super().__init__()
 
         # load config file if provided
         self._load_credentials()
-        # Initialize the parent class
-        super().__init__(headers=self._headers)
 
-    
+
     def get_documents(self, page_size: int = 200) -> list[dict]:
         """
         Return a dictionary with the user's available documents

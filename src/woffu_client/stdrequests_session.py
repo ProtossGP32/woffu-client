@@ -169,10 +169,16 @@ class Session:
         body_bytes: Optional[bytes] = None
         if data is not None:
             if isinstance(data, dict):
-                final_headers.setdefault("Content-Type", "application/json")
-                body_bytes = json.dumps(data).encode("utf-8")
+                if final_headers.get("Content-Type") == "application/json":
+                    # Explicit JSON
+                    body_bytes = json.dumps(data).encode("utf-8")
+                else:
+                    # Default: form-encoded
+                    final_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
+                    body_bytes = urllib.parse.urlencode(data).encode("utf-8")
             elif isinstance(data, str):
                 body_bytes = data.encode("utf-8")
+                final_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
             elif isinstance(data, (bytes, bytearray, memoryview)):
                 # Accept bytearray and memoryview as raw bytes
                 body_bytes = bytes(data)  # convert to bytes if needed
