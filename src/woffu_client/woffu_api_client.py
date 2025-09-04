@@ -75,12 +75,11 @@ class WoffuAPIClient(Session):
         self._user_id: str = ""
         self._company_id: str = ""
         self._config_file: Path = Path(kwargs["config"]) if "config" in kwargs else Path.joinpath(Path.home(), ".config/woffu/woffu_auth.json")
-        self._headers: dict[str, str] = {}
         self._documents_path : Path = Path(kwargs["documents_path"]) if "documents_path" in kwargs else Path.joinpath(Path.home(), "Documents/woffu/docs")
 
         # load config file if provided
         self._load_credentials()
-
+        # Initialize the parent class
         super().__init__(headers=self._headers)
 
     
