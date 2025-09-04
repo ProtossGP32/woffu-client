@@ -152,7 +152,7 @@ class WoffuAPIClient(Session):
                 self.download_document(document=document, output_dir=output_dir)
             logger.info("All documents downloaded!")
 
-    def get_presence(self, from_date: str = "", to_date: str = "", page_size: int = 1000):
+    def get_presence(self, from_date: str = "", to_date: str = "", page_size: int = 1000) -> dict:
         """
         Return the presence summary of a user within the provided time window.
         params:
@@ -174,10 +174,15 @@ class WoffuAPIClient(Session):
             }
         )
 
-        return hours_response
+        if hours_response.status == 200:
+            return hours_response.json()
     
+        else:
+            logger.error(f"Can't retrieve presence for the time period {from_date} - {to_date}!")
+            return {}
 
-    def get_diary_hour_types(self, date: str):
+
+    def get_diary_hour_types(self, date: str) -> dict:
         """
         Return the hour types' summary for a given date
         """
@@ -190,10 +195,15 @@ class WoffuAPIClient(Session):
             }
         )
 
-        return hour_types_response
+        if hour_types_response.status == 200:
+            return hour_types_response.json()
+    
+        else:
+            logger.error(f"Can't retrieve hour types for date {date}!")
+            return {}
     
 
-    def _get_workday_slots(self, diary_summary_id: int):
+    def _get_workday_slots(self, diary_summary_id: int) -> dict:
         """
         Return the workday slots for a given day. Each slot is comprised by the following keys: "in, "out" and "motive"
         params:
@@ -204,14 +214,21 @@ class WoffuAPIClient(Session):
             url=f"https://bsc.woffu.com/api/svc/core/diariesquery/diarysummaries/{diary_summary_id}/workday/slots/self"
         )
 
-        return workday_slots_response
+        if workday_slots_response.status == 200:
+            return workday_slots_response.json()
+    
+        else:
+            logger.error(f"Can't retrieve workday slots for diary entry {diary_summary_id}!")
+            return {}
 
 
     def get_sign_requests(self, date: str):
         """
         Return the user requests for a given date, such as Holidays
+        params:
         date: str. Sign requests date. WARNING! Date format must be "mm/dd/YYYY", this is different from the rest of queries.
         """
+        # TODO: unify date argument to the same format as the rest of methods and reformat it before sending the GET request
 
         sign_motives_response = self.get(
             url=f"https://{self._domain}/api/svc/core/diary/user/requests",
@@ -220,4 +237,9 @@ class WoffuAPIClient(Session):
             }
         )
 
-        return sign_motives_response
+        if sign_motives_response.status == 200:
+            return sign_motives_response.json()
+    
+        else:
+            logger.error(f"Can't retrieve sign motives for date {date}!")
+            return {}
