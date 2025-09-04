@@ -206,3 +206,19 @@ class WoffuAPIClient(Session):
         )
 
         return workday_slots_response
+
+
+    def get_sign_requests(self, date: str):
+        """
+        Return the user requests for a given date, such as Holidays
+        date: str. Sign requests date. WARNING! Date format must be "mm/dd/YYYY", this is different from the rest of queries.
+        """
+
+        sign_motives_response = self.get(
+            url=f"https://{self._domain}/api/svc/core/diary/user/requests",
+            params={
+                "date": date
+            }
+        )
+
+        return sign_motives_response
