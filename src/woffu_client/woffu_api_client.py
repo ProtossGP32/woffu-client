@@ -153,3 +153,26 @@ class WoffuAPIClient(Session):
                 self.download_document(document=document, output_dir=output_dir)
             logger.info("All documents downloaded!")
 
+    def get_presence(self, from_date: str = "", to_date: str = "", page_size: int = 1000):
+        """
+        Return the presence summary of a user within the provided time window.
+        params:
+        from_date: str. Start of the time window formatted as 'YYYY-mm-dd'
+        to_date: str. End of the time window formatted as 'YYYY-mm-dd'
+        page_size: int. Number of entries to retrieve. This should match the number of queried days, but we'll leave it at 1000 by default.
+        """
+
+        hours_response = self.get(
+            url=f"https://{self._domain}/api/svc/core/diariesquery/users/{self._user_id}/diaries/summary/presence",
+            params={
+                "userId": self._user_id,
+                "fromDate": from_date,
+                "toDate": to_date,
+                "pageSize": page_size,
+                "includeHourTypes":	True,
+                "includeNotHourTypes": True,
+                "includeDifference": True
+            }
+        )
+
+        return hours_response
