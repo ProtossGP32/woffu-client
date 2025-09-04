@@ -176,3 +176,33 @@ class WoffuAPIClient(Session):
         )
 
         return hours_response
+    
+
+    def get_diary_hour_types(self, date: str):
+        """
+        Return the hour types' summary for a given date
+        """
+
+        hour_types_response = self.get(
+            url=f"https://{self._domain}/api/svc/core/diariesquery/diarysumaries/workday/diaryhourtypes",
+            params={
+                "userId": self._user_id,
+                "date": date
+            }
+        )
+
+        return hour_types_response
+    
+
+    def _get_workday_slots(self, diary_summary_id: int):
+        """
+        Return the workday slots for a given day. Each slot is comprised by the following keys: "in, "out" and "motive"
+        params:
+        diary_summary_id: int. It can be retrieved via `get_presence`; each diary entry has its own `diarySummaryId` key.
+        """
+
+        workday_slots_response = self.get(
+            url=f"https://bsc.woffu.com/api/svc/core/diariesquery/diarysummaries/{diary_summary_id}/workday/slots/self"
+        )
+
+        return workday_slots_response
