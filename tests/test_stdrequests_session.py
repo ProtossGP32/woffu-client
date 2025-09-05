@@ -9,7 +9,7 @@ from urllib.request import Request, OpenerDirector
 from src.woffu_client.stdrequests_session import Session, HTTPResponse
 import pytest
 import asyncio
-
+import urllib.request
 
 class DummyRawResponse:
     def __init__(self, status: int = 200, content: bytes = b"", headers: Optional[Dict[str, str]] = None) -> None:
@@ -41,7 +41,7 @@ class DummyOpener(OpenerDirector):
 
     def __init__(self) -> None:
         super().__init__()
-        self.called_with = None
+        self.called_with: Optional[urllib.request.Request] = None
         self._response = None
 
     def open(self, req: Request, timeout: Optional[Union[int, float]] = None) -> object:
@@ -210,6 +210,25 @@ class TestHTTPResponse(TestCase):
         asyncio.run(run_test())
 
 class TestSession(TestCase):
+
+    # Helper function (put near top of file or inside TestSession)
+    @staticmethod
+    def get_request_data_bytes(req: Request) -> bytes:
+        if req.data is None:
+            return b""
+        if isinstance(req.data, bytes):
+            return req.data
+        if isinstance(req.data, str):
+            return req.data.encode("utf-8")
+        if hasattr(req.data, "read"):
+            file_like = cast(SupportsRead, req.data)
+            result = file_like.read()
+            if not isinstance(result, bytes):
+                raise TypeError(f"Expected bytes from read(), got {type(result)}")
+            return result
+        if isinstance(req.data, Iterable):
+            return b"".join(req.data)
+        raise TypeError(f"Unsupported type for req.data: {type(req.data)}")
 
     def setUp(self) -> None:
         self.session: Session = Session()
@@ -668,3 +687,69 @@ class TestSession(TestCase):
 
             # Since the patched request returns an HTTPResponse, resp should be an HTTPResponse instance
             self.assertIsInstance(resp, HTTPResponse)
+
+    def test_json_serialization_sets_header_and_body(self) -> None:
+        expected = {"hello": "world"}
+        self.opener._response = DummyRawResponse(
+            status=200, content=b"{}", headers={"Content-Type": "application/json"}
+            )
+
+        resp: HTTPResponse = self.session.post("http://example.com", json=expected)
+        self.assertIsInstance(resp, HTTPResponse)
+
+        req: Request = cast(urllib.request.Request, self.opener.called_with)
+        self.assertIsNotNone(req)
+
+        # Careful! Python's urllib.request.Request internally stores the header keys with the capitalization from when they were added,
+        # and `get_header()` is case-sensitive except for "Content-type", which it seems to be a weird historical quirk.
+        #self.assertEqual(req.get_header("Content-type"), "custom/type")
+        
+        # For robustness's sake, it's better to normalize headers when asserting instead.
+        headers = {k.lower(): v for k, v in req.header_items()}
+        self.assertEqual(headers["content-type"], "application/json")
+
+        # Safely get data bytes and decode
+        data_bytes = self.get_request_data_bytes(req)
+        self.assertEqual(data_bytes.decode(), json.dumps(expected))
+
+    def test_json_respects_custom_header(self) -> None:
+        expected = {"foo": "bar"}
+        self.opener._response = DummyRawResponse(
+            status=200, content=b"{}", headers={"Content-Type": "application/json"}
+            )
+
+        resp: HTTPResponse = self.session.post(
+            "http://example.com",
+            json=expected,
+            headers={"Content-Type": "custom/type"},
+        )
+        self.assertIsInstance(resp, HTTPResponse)
+
+        req: Request = cast(urllib.request.Request, self.opener.called_with)
+        self.assertIsNotNone(req)
+
+        # Careful! Python's urllib.request.Request internally stores the header keys with the capitalization from when they were added,
+        # and `get_header()` is case-sensitive except for "Content-type", which it seems to be a weird historical quirk.
+        #self.assertEqual(req.get_header("Content-type"), "custom/type")
+        
+        # For robustness's sake, it's better to normalize headers when asserting instead.
+        headers = {k.lower(): v for k, v in req.header_items()}
+        self.assertEqual(headers["content-type"], "custom/type")
+        
+        # Safely get data bytes and decode
+        data_bytes = self.get_request_data_bytes(req)
+        self.assertEqual(data_bytes.decode(), json.dumps(expected))
+
+    def test_json_none_means_no_body(self) -> None:
+        self.opener._response = DummyRawResponse(
+            status=200, content=b"{}", headers={"Content-Type": "application/json"}
+            )
+
+        resp = self.session.post("http://example.com", json=None)
+        self.assertIsInstance(resp, HTTPResponse)
+
+        req: Request = cast(Request, self.opener.called_with)
+        self.assertIsNotNone(req)
+
+        # Should send no body at all
+        self.assertIsNone(req.data)

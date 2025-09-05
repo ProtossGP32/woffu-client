@@ -1,6 +1,6 @@
 import urllib.request
 import urllib.parse
-import json
+import json as jsonlib
 import time
 import asyncio
 import base64
@@ -39,7 +39,7 @@ class HTTPResponse:
 
     def json(self) -> Any:
         """Parse response body as JSON."""
-        return json.loads(self.text())
+        return jsonlib.loads(self.text())
 
     def content(self) -> bytes:
         """Return the entire response body as bytes."""
@@ -96,6 +96,7 @@ class HTTPResponse:
         if callable(close_method):
             close_method()
 
+
 class Session:
     headers: Dict[str, str]
     params: Dict[str, str]
@@ -142,6 +143,7 @@ class Session:
         url: str,
         params: Optional[Dict[str, str]] = None,
         data: Optional[Union[dict, str, bytes]] = None,
+        json: Optional[Any] = None,  # <-- added json parameter
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[int] = None,
         retries: Optional[int] = None,
@@ -167,15 +169,16 @@ class Session:
 
         # Prepare body
         body_bytes: Optional[bytes] = None
-        if data is not None:
+
+        if json is not None:
+            # JSON mode takes precedence over data
+            final_headers.setdefault("Content-Type", "application/json")
+            body_bytes = jsonlib.dumps(json).encode("utf-8")
+        elif data is not None:
             if isinstance(data, dict):
-                if final_headers.get("Content-Type") == "application/json":
-                    # Explicit JSON
-                    body_bytes = json.dumps(data).encode("utf-8")
-                else:
-                    # Default: form-encoded
-                    final_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
-                    body_bytes = urllib.parse.urlencode(data).encode("utf-8")
+                # Default: form-encoded
+                final_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
+                body_bytes = urllib.parse.urlencode(data).encode("utf-8")
             elif isinstance(data, str):
                 body_bytes = data.encode("utf-8")
                 final_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
@@ -204,7 +207,7 @@ class Session:
             except (HTTPError, URLError, OSError) as e:
                 last_exc = e
                 if isinstance(e, HTTPError):
-                    raw_resp = cast(Any, e)  # e acts like response
+                    raw_resp = cast(Any, e)
                     return HTTPResponse(raw_resp, e.code, dict(e.headers or {}), stream=stream)
                 if attempt < retries - 1:
                     time.sleep(1)
