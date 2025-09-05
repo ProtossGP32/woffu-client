@@ -5,6 +5,8 @@ import logging
 from .stdrequests_session import Session
 from pathlib import Path
 from getpass import getpass
+from datetime import datetime, timedelta, timezone
+from tzlocal import get_localzone
 
 # Initialize a logger
 logger = logging.getLogger(__name__)
@@ -248,12 +250,19 @@ class WoffuAPIClient(Session):
 
     def get_presence(self, from_date: str = "", to_date: str = "", page_size: int = 1000) -> dict:
         """
-        Return the presence summary of a user within the provided time window.
+        Return the presence summary of a user within the provided time window. If no dates are defined, they will be initialized to the current date
         params:
         from_date: str. Start of the time window formatted as 'YYYY-mm-dd'
         to_date: str. End of the time window formatted as 'YYYY-mm-dd'
         page_size: int. Number of entries to retrieve. This should match the number of queried days, but we'll leave it at 1000 by default.
         """
+
+        current_date = datetime.now(tz=get_localzone())
+        
+        # Initialize date values
+        if not from_date:
+            from_date = current_date.strftime("%Y-%m-%d")
+            to_date = current_date.strftime("%Y-%m-%d")
 
         hours_response = self.get(
             url=f"https://{self._domain}/api/svc/core/diariesquery/users/{self._user_id}/diaries/summary/presence",
@@ -337,3 +346,100 @@ class WoffuAPIClient(Session):
         else:
             logger.error(f"Can't retrieve sign motives for date {date}!")
             return {}
+        
+    
+    def get_status(self, only_running_clock: bool = False) -> tuple[timedelta, bool]:
+        """
+        Return the total amount of worked hours as well as whether we're signed-in or signed-out at the moment
+        """
+        signs_in_day = self.get(
+            url=f"{self._woffu_api_url}/api/signs"
+        ).json()
+
+        # Initialize a timer and the running clock boolean
+        total_time = timedelta()
+        running_clock = False
+
+        # Just return the las sign status
+        if only_running_clock:
+            return total_time, signs_in_day[-1]['SignIn'] if signs_in_day else running_clock
+
+        # Go through all the signs. Work with UTC dates to avoid Daylight Saving issues
+        
+        for sign in signs_in_day:
+            running_clock = sign['SignIn']
+
+            if running_clock:
+                t1 = datetime.strptime(f"{sign['Date']}+00:00", "%Y-%m-%dT%H:%M:%S.%f%z")
+            else:
+                t2 = datetime.strptime(f"{sign['Date']}+00:00", "%Y-%m-%dT%H:%M:%S.%f%z")
+                # Only update total_time when there's a sign-out
+                total_time += (t2 - t1)
+        
+        # If clock is still running, add the remaining time
+        if running_clock:
+            current_time = datetime.now(tz=timezone.utc)
+            total_time += (current_time - t1)
+
+        # Log worked hours:
+        hours, rem = divmod(total_time.total_seconds(), 3600)
+        minutes, seconds = divmod(rem, 60)
+        logger.info('Hours worked today: {:02d}:{:02d}:{:02d}'.format(int(hours), int(minutes), int(seconds)))
+        logger.info(f"You're currently signed {'in' if running_clock else 'out'}.")
+        return total_time, running_clock
+
+    def sign(self, type: str = "", motive: str = ""):
+        """
+        Sign in/out on Woffu
+        params:
+        type: str. Can be "in", "out" or "empty". If empty, it will sign in/out without checking the current status.
+        """
+        # TODO: Include the sign-in reason in the sign-in ("Working from home", "Office", etc...)
+        # Get current sign status
+        _, signed_in = self.get_status(only_running_clock=True)
+
+        # Evaluate current sign value against desired
+        match type:
+            case "in" | "out":
+                requested_sign: bool = True if type == "in" else False
+                if signed_in == requested_sign:
+                    logging.warning(f"User is already signed {type}, skipping new sign.")
+                    return
+            case _:
+                pass
+
+        # Send sign request
+        logger.info("Sending sign request...")
+        # Retrieve the timezone of the local server
+        tz = get_localzone()
+        # Get the current datetime with local timezone
+        current_time = datetime.now(tz=tz)
+        # Get the actual time offset in minutes
+        utc_offset = current_time.utcoffset()
+        
+        if utc_offset:
+            timezone_offset =- int(utc_offset.total_seconds() / 60)
+        else:
+            timezone_offset = 0
+        
+        return self.post(
+            url=f"https://{self._domain}/api/svc/signs/signs",
+            # You don't need to send any data, just an empty JSON object.
+            # The only known keys that are sent from the webpage are:
+            # - agreementEventId: probably auto-generated on sign-in event, always empty on sign-out
+            # - deviceId: like "WebApp"
+            # - latitude: always Null
+            # - longitude: always Null
+            # - requestId: always Null
+            # - timezoneOffset: matches the UTC offset of the timezone in minutes, and in inverse sign (-120 minutes for CEST, for example)
+            json={
+                #'StartDate': current_time.isoformat(sep='T', timespec='seconds'),
+                #'EndDate': current_time.isoformat(sep='T', timespec='seconds'),
+                'timezoneOffset': timezone_offset,
+                #'UserId': self._user_id
+            }
+        )
+        
+
+
+        
