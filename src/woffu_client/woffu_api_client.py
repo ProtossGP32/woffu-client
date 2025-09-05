@@ -364,21 +364,36 @@ class WoffuAPIClient(Session):
         if only_running_clock:
             return total_time, signs_in_day[-1]['SignIn'] if signs_in_day else running_clock
 
-        # Go through all the signs. Work with UTC dates to avoid Daylight Saving issues
-        
+        # Go through all the signs.
+        # Prepare current time with local timezone to use in case UTC offsets are wrong in Woffu
+        # - We do it this way to take into account Daylight Saving Timezones (CET +1, CEST +2, for example)
+        current_time = datetime.now(tz=get_localzone())
+
         for sign in signs_in_day:
             running_clock = sign['SignIn']
+            sign_date = sign['TrueDate']
+            # Split UtcTime and keep only the offset
+            utc_offset = f"{sign['UtcTime'].split(' ')[1].zfill(3)}00"
+            # WORKAROUND: Woffu stores incorrect UTC information when signing in from the Webapp, showing same local date on 'TrueDate' and 'UtcTime' but with no UTC offset (+0)
+            # - In the time being, we'll be using our local timezone for any sign that comes with +0 in the UtcTime as we suspect Woffu DB is running on a server with the same local timezone as us
+            if utc_offset == "+0000":
+                utc_offset = current_time.strftime("%z")
+
+            sign_date_timezoned = f"{sign_date}{utc_offset}"
 
             if running_clock:
-                t1 = datetime.strptime(f"{sign['Date']}+00:00", "%Y-%m-%dT%H:%M:%S.%f%z")
+                t1 = datetime.strptime(sign_date_timezoned, "%Y-%m-%dT%H:%M:%S.%f%z")
             else:
-                t2 = datetime.strptime(f"{sign['Date']}+00:00", "%Y-%m-%dT%H:%M:%S.%f%z")
+                t2 = datetime.strptime(sign_date_timezoned, "%Y-%m-%dT%H:%M:%S.%f%z")
                 # Only update total_time when there's a sign-out
                 total_time += (t2 - t1)
+                logger.debug(f"Total time on closed signs: {total_time.total_seconds() / 3600}")
         
+        logger.debug(f"Total time on closed signs: {total_time.total_seconds() / 3600}")
+
         # If clock is still running, add the remaining time
         if running_clock:
-            current_time = datetime.now(tz=timezone.utc)
+            logger.debug(f"Current time: {current_time.isoformat()}")
             total_time += (current_time - t1)
 
         # Log worked hours:
@@ -410,13 +425,11 @@ class WoffuAPIClient(Session):
 
         # Send sign request
         logger.info("Sending sign request...")
-        # Retrieve the timezone of the local server
-        tz = get_localzone()
         # Get the current datetime with local timezone
-        current_time = datetime.now(tz=tz)
+        current_time = datetime.now(tz=get_localzone())
+
         # Get the actual time offset in minutes
         utc_offset = current_time.utcoffset()
-        
         if utc_offset:
             timezone_offset =- int(utc_offset.total_seconds() / 60)
         else:
@@ -435,7 +448,7 @@ class WoffuAPIClient(Session):
             json={
                 #'StartDate': current_time.isoformat(sep='T', timespec='seconds'),
                 #'EndDate': current_time.isoformat(sep='T', timespec='seconds'),
-                'timezoneOffset': timezone_offset,
+                #'timezoneOffset': timezone_offset,
                 #'UserId': self._user_id
             }
         )
