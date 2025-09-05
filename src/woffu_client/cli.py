@@ -21,7 +21,7 @@ def main() -> None:
         default=DEFAULT_CONFIG
     )
 
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(title="actions", dest="command", required=True)
 
     # ---- download_all_files ----
     dl_parser = subparsers.add_parser(
@@ -34,6 +34,23 @@ def main() -> None:
         help=f"Directory to save downloaded files (default: {DEFAULT_OUTPUT_DIR})"
     )
 
+    # ---- get_status ----
+    status_parser = subparsers.add_parser(
+        "get-status", help="Get current status and current day's total amount of worked hours"
+    )
+
+    # ---- sign ----
+    sign_parser = subparsers.add_parser(
+        "sign", help="Send sing in or sign out request based on the '--sign-type' argument"
+    )
+
+    sign_parser.add_argument(
+        "--sign-type",
+        type=str,
+        default="any",
+        help="Sign type to send. It can be either 'in', 'out' or 'any' (default: 'any')"
+    )
+    
     args = parser.parse_args()
 
     # Instantiate client
@@ -47,6 +64,16 @@ def main() -> None:
             except Exception as e:
                 print(f"❌ Error downloading files: {e}", file=sys.stderr)
                 sys.exit(1)
+        case "get-status":
+            try:
+                worked_hours, running_status = client.get_status()
+            except Exception as e:
+                print(f"❌ Error retrieving status: {e}", file=sys.stderr)
+        case "sign":
+            try:
+                _ = client.sign(type=args.sign_type)
+            except Exception as e:
+                print(f"❌ Error sending sign command: {e}", file=sys.stderr)
         case _:
             print(f"❌ Unknown command: {args.command}", file=sys.stderr)
     
