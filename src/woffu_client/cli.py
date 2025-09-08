@@ -25,7 +25,7 @@ def main() -> None:
         "--non-interactive",
         required=False,
         action='store_true',
-        help=f"Set session as non-interactive (default: False)",
+        help=f"Set session as non-interactive",
         default=False
     )
 
