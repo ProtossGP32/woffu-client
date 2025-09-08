@@ -23,6 +23,8 @@ logger.setLevel("INFO")
 DEFAULT_CONFIG = Path.home() / ".config/woffu/woffu_auth.json"
 DEFAULT_DOCS_DIR = Path.home() / "Documents/woffu/docs"
 
+DEFAULT_DATE_FORMAT = "%Y-%m-%d"
+
 class WoffuAPIClient(Session):
     # Class arguments
     _woffu_api_url: str = "https://app.woffu.com"
@@ -267,8 +269,8 @@ class WoffuAPIClient(Session):
         
         # Initialize date values
         if not from_date:
-            from_date = current_date.strftime("%Y-%m-%d")
-            to_date = current_date.strftime("%Y-%m-%d")
+            from_date = current_date.strftime(DEFAULT_DATE_FORMAT)
+            to_date = current_date.strftime(DEFAULT_DATE_FORMAT)
 
         hours_response = self.get(
             url=f"https://{self._domain}/api/svc/core/diariesquery/users/{self._user_id}/diaries/summary/presence",
@@ -291,7 +293,7 @@ class WoffuAPIClient(Session):
             return {}
 
 
-    def get_diary_hour_types(self, date: str) -> dict:
+    def _get_diary_hour_types(self, date: str) -> dict:
         """
         Return the hour types' summary for a given date
         """
@@ -305,7 +307,7 @@ class WoffuAPIClient(Session):
         )
 
         if hour_types_response.status == 200:
-            return hour_types_response.json()
+            return hour_types_response.json()['diaryHourTypes']
     
         else:
             logger.error(f"Can't retrieve hour types for date {date}!")
@@ -320,7 +322,7 @@ class WoffuAPIClient(Session):
         """
 
         workday_slots_response = self.get(
-            url=f"https://bsc.woffu.com/api/svc/core/diariesquery/diarysummaries/{diary_summary_id}/workday/slots/self"
+            url=f"https://{self._domain}/api/svc/core/diariesquery/diarysummaries/{diary_summary_id}/workday/slots/self"
         )
 
         if workday_slots_response.status == 200:
@@ -388,9 +390,9 @@ class WoffuAPIClient(Session):
             sign_date_timezoned = f"{sign_date}{utc_offset}"
 
             if running_clock:
-                t1 = datetime.strptime(sign_date_timezoned, "%Y-%m-%dT%H:%M:%S.%f%z")
+                t1 = datetime.strptime(sign_date_timezoned, f"{DEFAULT_DATE_FORMAT}T%H:%M:%S.%f%z")
             else:
-                t2 = datetime.strptime(sign_date_timezoned, "%Y-%m-%dT%H:%M:%S.%f%z")
+                t2 = datetime.strptime(sign_date_timezoned, f"{DEFAULT_DATE_FORMAT}T%H:%M:%S.%f%z")
                 # Only update total_time when there's a sign-out
                 total_time += (t2 - t1)
                 logger.debug(f"Total time on closed signs: {total_time.total_seconds() / 3600}")
@@ -458,4 +460,31 @@ class WoffuAPIClient(Session):
                 #'UserId': self._user_id
             }
         )
-                
+    
+
+    def get_diary_hour_types_summary(self, from_date: str = "", to_date:str = "") -> dict:
+        """
+        Return a summary of the diary hour types other than the working ones, such as 'Extr. a compensar'
+        """
+
+        hour_types_summary: dict = {}
+
+        from_dt = datetime.strptime(from_date, DEFAULT_DATE_FORMAT).astimezone(get_localzone())
+        to_dt = datetime.strptime(to_date, DEFAULT_DATE_FORMAT).astimezone(get_localzone())
+
+        for day in range(0, (to_dt - from_dt).days +1):
+            date = from_dt + timedelta(days=day)
+            date_str = date.strftime(DEFAULT_DATE_FORMAT)
+            hour_types = self._get_diary_hour_types(date=date.strftime(date_str))
+
+            hour_types_dict = {}
+
+            for hour_type in hour_types:
+                if hour_type['name'] not in hour_types_dict:
+                    hour_types_dict[hour_type['name']] = hour_type['hours']
+                else:
+                    hour_types_dict[hour_type['name']] =+ hour_type['hours']
+
+            hour_types_summary[date_str] = hour_types_dict
+
+        return hour_types_summary
