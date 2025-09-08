@@ -6,6 +6,7 @@ from woffu_client import WoffuAPIClient  # adjust import path
 
 DEFAULT_CONFIG = Path.home() / ".config/woffu/woffu_auth.json"
 DEFAULT_OUTPUT_DIR = Path.home() / "Documents/woffu/docs"
+DEFAULT_SUMMARY_REPORTS_DIR = Path.home() / "Documents/woffu/summary_reports"
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -64,6 +65,33 @@ def main() -> None:
         "request-credentials", help="Request credentials from Woffu. For non-interactive sessions, set username and password as environment variables WOFFU_USERNAME and WOFFU_PASSWORD."
     )
 
+    # ---- get_status ----
+    summary_report_parser = subparsers.add_parser(
+        "summary-report", help="Summary report of work hours for a given time window"
+    )
+
+    summary_report_parser.add_argument(
+        "--from-date",
+        type=str,
+        required=True,
+        help="Start date of the time window. Format YYYY-mm-dd"
+    )
+
+    summary_report_parser.add_argument(
+        "--to-date",
+        type=str,
+        required=True,
+        help="End date of the time window. Format YYYY-mm-dd"
+    )
+
+    summary_report_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_SUMMARY_REPORTS_DIR,
+        help=f"Directory to save exported CSV file (default: {DEFAULT_SUMMARY_REPORTS_DIR})"
+    )
+
+
     args = parser.parse_args()
 
     # Instantiate client
@@ -93,6 +121,20 @@ def main() -> None:
                 client._save_credentials()
             except Exception as e:
                 print(f"❌ Error requesting new credentials: {e}", file=sys.stderr)
+        case "summary-report":
+            try:
+                summary_report = client.get_summary_report(
+                    from_date=args.from_date,
+                    to_date=args.to_date,
+                    )
+                client.export_summary_to_csv(
+                    summary_report=summary_report,
+                    from_date=args.from_date,
+                    to_date=args.to_date,
+                    output_path=args.output_dir
+                )
+            except Exception as e:
+                print(f"❌ Error retrieving summary report: {e}", file=sys.stderr)
         case _:
             print(f"❌ Unknown command: {args.command}", file=sys.stderr)
     
