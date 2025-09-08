@@ -21,6 +21,14 @@ def main() -> None:
         default=DEFAULT_CONFIG
     )
 
+    parser.add_argument(
+        "--interactive",
+        required=False,
+        type=bool,
+        help=f"Set session as interactive or non-interactive (default: True)",
+        default=True
+    )
+
     subparsers = parser.add_subparsers(title="actions", dest="command", required=True)
 
     # ---- download_all_files ----
@@ -51,10 +59,15 @@ def main() -> None:
         help="Sign type to send. It can be either 'in', 'out' or 'any' (default: 'any')"
     )
     
+    # ---- get_status ----
+    status_parser = subparsers.add_parser(
+        "request-credentials", help="Request credentials from Woffu. For non-interactive sessions, set username and password as environment variables WOFFU_USERNAME and WOFFU_PASSWORD."
+    )
+
     args = parser.parse_args()
 
     # Instantiate client
-    client = WoffuAPIClient(config=args.config)
+    client = WoffuAPIClient(config=args.config, interactive=args.interactive)
     match args.command:
         case "download-all-documents":
             try:
@@ -74,6 +87,12 @@ def main() -> None:
                 _ = client.sign(type=args.sign_type)
             except Exception as e:
                 print(f"❌ Error sending sign command: {e}", file=sys.stderr)
+        case "request-credentials":
+            try:
+                client._request_credentials()
+                client._save_credentials()
+            except Exception as e:
+                print(f"❌ Error requesting new credentials: {e}", file=sys.stderr)
         case _:
             print(f"❌ Unknown command: {args.command}", file=sys.stderr)
     

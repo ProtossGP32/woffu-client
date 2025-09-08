@@ -5,8 +5,9 @@ import logging
 from .stdrequests_session import Session
 from pathlib import Path
 from getpass import getpass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from tzlocal import get_localzone
+import os
 
 # Initialize a logger
 logger = logging.getLogger(__name__)
@@ -101,9 +102,19 @@ class WoffuAPIClient(Session):
     def _request_credentials(self):
         """
         Request all available information to compose credentials
+        Use WOFFU_USERNAME and WOFFU_PASSWORD environment variables for unattended request
         """
-        self._username = input("Enter your Woffu username (mail):\n")
-        password = getpass(prompt="Enter your password:\n")
+        self._username = os.environ.get('WOFFU_USERNAME', "")
+        password = os.environ.get('WOFFU_PASSWORD', "")
+
+        # Ask for credentials manually if not provided
+        if (not self._username or not password):
+            if self._interactive:
+                self._username = input("Enter your Woffu username (mail):\n")
+                password = getpass(prompt="Enter your password:\n")
+            else:
+                logger.error("Can't request token in non-interactive method without username and password. Please provide them in WOFFU_USERNAME and WOFFU_PASSWORD.")
+                sys.exit(1)
 
         # Retrieve access token
         self._retrieve_access_token(
@@ -128,14 +139,9 @@ class WoffuAPIClient(Session):
             self._config_file = Path(creds_file)
         
         if not self._config_file.exists():
-            logger.error(f"Config file '{self._config_file}' doesn't exist!")
-            if self._interactive:
-                logger.info("Manual request of authentication token.")
-                self._request_credentials()
-                self._save_credentials()
-            else:
-                logger.error("Ensure you have a valid config file before executing this script. Exiting...")
-                sys.exit(1)
+            logger.error(f"Config file '{self._config_file}' doesn't exist! Requesting authentication token...")
+            self._request_credentials()
+            self._save_credentials()
             
         else:
             with open(self._config_file, "r") as f:
