@@ -29,6 +29,9 @@ class WoffuAPIClient(Session):
     # Class arguments
     _woffu_api_url: str = "https://app.woffu.com"
 
+    hour_types_dict: dict = {
+        5: "Extr. a compensar"
+    }
 
     def _get_domain_user_companyId(self):
         """
@@ -256,7 +259,7 @@ class WoffuAPIClient(Session):
                 self.download_document(document=document, output_dir=output_dir)
             logger.info("All documents downloaded!")
 
-    def get_presence(self, from_date: str = "", to_date: str = "", page_size: int = 1000) -> dict:
+    def _get_presence(self, from_date: str = "", to_date: str = "", page_size: int = 1000) -> dict:
         """
         Return the presence summary of a user within the provided time window. If no dates are defined, they will be initialized to the current date
         params:
@@ -286,7 +289,7 @@ class WoffuAPIClient(Session):
         )
 
         if hours_response.status == 200:
-            return hours_response.json()
+            return hours_response.json()['diaries']
     
         else:
             logger.error(f"Can't retrieve presence for the time period {from_date} - {to_date}!")
@@ -483,8 +486,43 @@ class WoffuAPIClient(Session):
                 if hour_type['name'] not in hour_types_dict:
                     hour_types_dict[hour_type['name']] = hour_type['hours']
                 else:
-                    hour_types_dict[hour_type['name']] =+ hour_type['hours']
+                    hour_types_dict[hour_type['name']] += hour_type['hours']
 
             hour_types_summary[date_str] = hour_types_dict
 
         return hour_types_summary
+    
+
+    def get_summary_report(self, from_date:str = "", to_date:str = "") -> dict:
+        """
+        Generate a summary report based on the information provided by the Presence endpoint.
+        """
+        diaries = self._get_presence(from_date=from_date, to_date=to_date)
+
+        summary_report = {}
+
+        for diary in diaries:
+            summary_report[diary['date']] = {}
+            event_report = summary_report[diary['date']]
+            logging.debug(f"Event report initialization: {event_report}")
+            # Retrieve the worked hours
+            if 'presenceEvents' in diary and diary['presenceEvents']:
+                for event in diary['presenceEvents']:    
+                    if 'work_hours' not in event_report:
+                        event_report['work_hours'] = event['totalTime']
+                        logging.debug(f"Work hours initialized for date {diary['date']}")
+                    else:
+                        event_report['work_hours'] += event['totalTime']
+                        logging.debug(f"Work hours increased for date {diary['date']}")
+            
+            # Retrieve the other hour types
+            if 'diaryHourTypes' in diary and diary['diaryHourTypes']:
+                for hour_type in diary['diaryHourTypes']:
+                    hour_type_id = hour_type['hourTypeId']
+                    hour_type_name = self.hour_types_dict[hour_type_id] if hour_type_id in self.hour_types_dict else hour_type_id
+                    if hour_type_name not in event_report:
+                        event_report[hour_type_name] = hour_type['hours']
+                    else:
+                        event_report[hour_type_name] += hour_type['hours']
+
+        return summary_report
