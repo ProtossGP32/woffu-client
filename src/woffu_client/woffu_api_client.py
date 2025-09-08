@@ -8,6 +8,7 @@ from getpass import getpass
 from datetime import datetime, timedelta
 from tzlocal import get_localzone
 import os
+import csv
 
 # Initialize a logger
 logger = logging.getLogger(__name__)
@@ -22,13 +23,15 @@ logger.setLevel("INFO")
 
 DEFAULT_CONFIG = Path.home() / ".config/woffu/woffu_auth.json"
 DEFAULT_DOCS_DIR = Path.home() / "Documents/woffu/docs"
+DEFAULT_SUMMARY_REPORTS_DIR = Path.home() / "Documents/woffu/summary_reports"
 
 DEFAULT_DATE_FORMAT = "%Y-%m-%d"
 
 class WoffuAPIClient(Session):
     # Class arguments
     _woffu_api_url: str = "https://app.woffu.com"
-
+    _localzone = get_localzone()
+    
     hour_types_dict: dict = {
         5: "Extr. a compensar"
     }
@@ -268,7 +271,7 @@ class WoffuAPIClient(Session):
         page_size: int. Number of entries to retrieve. This should match the number of queried days, but we'll leave it at 1000 by default.
         """
 
-        current_date = datetime.now(tz=get_localzone())
+        current_date = datetime.now(tz=self._localzone)
         
         # Initialize date values
         if not from_date:
@@ -329,7 +332,7 @@ class WoffuAPIClient(Session):
         )
 
         if workday_slots_response.status == 200:
-            return workday_slots_response.json()
+            return workday_slots_response.json()['slots']
     
         else:
             logger.error(f"Can't retrieve workday slots for diary entry {diary_summary_id}!")
@@ -358,7 +361,7 @@ class WoffuAPIClient(Session):
             logger.error(f"Can't retrieve sign motives for date {date}!")
             return {}
         
-    
+
     def get_status(self, only_running_clock: bool = False) -> tuple[timedelta, bool]:
         """
         Return the total amount of worked hours as well as whether we're signed-in or signed-out at the moment
@@ -378,7 +381,7 @@ class WoffuAPIClient(Session):
         # Go through all the signs.
         # Prepare current time with local timezone to use in case UTC offsets are wrong in Woffu
         # - We do it this way to take into account Daylight Saving Timezones (CET +1, CEST +2, for example)
-        current_time = datetime.now(tz=get_localzone())
+        current_time = datetime.now(tz=self._localzone)
 
         for sign in signs_in_day:
             running_clock = sign['SignIn']
@@ -429,7 +432,7 @@ class WoffuAPIClient(Session):
             case "in" | "out":
                 requested_sign: bool = True if type == "in" else False
                 if signed_in == requested_sign:
-                    logging.warning(f"User is already signed {type}, skipping new sign.")
+                    logger.warning(f"User is already signed {type}, skipping new sign.")
                     return
             case _:
                 pass
@@ -437,7 +440,7 @@ class WoffuAPIClient(Session):
         # Send sign request
         logger.info("Sending sign request...")
         # Get the current datetime with local timezone
-        current_time = datetime.now(tz=get_localzone())
+        current_time = datetime.now(tz=self._localzone)
 
         # Get the actual time offset in minutes
         utc_offset = current_time.utcoffset()
@@ -472,8 +475,8 @@ class WoffuAPIClient(Session):
 
         hour_types_summary: dict = {}
 
-        from_dt = datetime.strptime(from_date, DEFAULT_DATE_FORMAT).astimezone(get_localzone())
-        to_dt = datetime.strptime(to_date, DEFAULT_DATE_FORMAT).astimezone(get_localzone())
+        from_dt = datetime.strptime(from_date, DEFAULT_DATE_FORMAT).astimezone(self._localzone)
+        to_dt = datetime.strptime(to_date, DEFAULT_DATE_FORMAT).astimezone(self._localzone)
 
         for day in range(0, (to_dt - from_dt).days +1):
             date = from_dt + timedelta(days=day)
@@ -498,22 +501,58 @@ class WoffuAPIClient(Session):
         Generate a summary report based on the information provided by the Presence endpoint.
         """
         diaries = self._get_presence(from_date=from_date, to_date=to_date)
-
         summary_report = {}
 
+        current_time = datetime.now(tz=self._localzone)
+
+        logger.info(f"Retrieving workday slots and extra hours...")
         for diary in diaries:
             summary_report[diary['date']] = {}
             event_report = summary_report[diary['date']]
-            logging.debug(f"Event report initialization: {event_report}")
-            # Retrieve the worked hours
-            if 'presenceEvents' in diary and diary['presenceEvents']:
-                for event in diary['presenceEvents']:    
-                    if 'work_hours' not in event_report:
-                        event_report['work_hours'] = event['totalTime']
-                        logging.debug(f"Work hours initialized for date {diary['date']}")
-                    else:
-                        event_report['work_hours'] += event['totalTime']
-                        logging.debug(f"Work hours increased for date {diary['date']}")
+
+            diary_summary_id = diary['diarySummaryId']
+
+            # Retrieve diary slots
+            slots = self._get_workday_slots(diary_summary_id=diary_summary_id)
+
+            total_time: float = 0.0
+
+            for slot in slots:
+                if slot and 'motive' in slot and slot['motive']:
+                    total_time += slot['motive']['hours']
+                else:
+                    logger.info(f"Slot of date {diary['date']} doesn't have motive. Using `in` and `out` keys instead...")
+                    # Compute the difference between the sign in and sign out times
+                    in_date = slot['in']['trueDate']
+                    in_utc_offset = f"{slot['in']['utcTime'].split(' ')[1].zfill(3)}00"
+                    if in_utc_offset == "+0000":
+                        in_utc_offset = current_time.strftime("%z")
+
+                    out_date = slot['out']['trueDate']
+                    out_utc_offset = f"{slot['out']['utcTime'].split(' ')[1].zfill(3)}00"
+                    if out_utc_offset == "+0000":
+                        out_utc_offset = current_time.strftime("%z")
+                                           
+                    in_date_timezoned = f"{in_date}{in_utc_offset}"
+                    out_date_timezoned = f"{out_date}{out_utc_offset}"
+
+                    in_dt = datetime.strptime(in_date_timezoned, f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z")
+                    out_dt = datetime.strptime(out_date_timezoned, f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z")
+            
+                    total_time += (out_dt - in_dt).total_seconds() / 3600
+
+            event_report['work_hours'] = total_time
+
+            # INVALID APPROACH: Woffu Presence page is inaccurate, we must work with the daily slots
+            # # Retrieve the worked hours
+            # if 'presenceEvents' in diary and diary['presenceEvents']:
+            #     for event in diary['presenceEvents']:    
+            #         if 'work_hours' not in event_report:
+            #             event_report['work_hours'] = event['totalTime']
+            #             logger.debug(f"Work hours initialized for date {diary['date']}")
+            #         else:
+            #             event_report['work_hours'] += event['totalTime']
+            #             logger.debug(f"Work hours increased for date {diary['date']}")
             
             # Retrieve the other hour types
             if 'diaryHourTypes' in diary and diary['diaryHourTypes']:
@@ -526,3 +565,54 @@ class WoffuAPIClient(Session):
                         event_report[hour_type_name] += hour_type['hours']
 
         return summary_report
+    
+    
+    def export_summary_to_csv(self, summary_report:dict, from_date: str = "", to_date: str = "", output_path:Path = Path(Path.home() / "Documents/woffu/summary_reports"), delimiter:str=","):
+        """
+        Export the summary report to a CSV file
+        """
+        # Convert JSON to a proper array
+        reports_list = []
+        reports_header = set()
+
+        search_date_range = False
+        min_date = datetime.now(tz=self._localzone)
+        max_date = datetime.strptime("2000-01-01",DEFAULT_DATE_FORMAT).astimezone(tz=self._localzone)
+
+        if not from_date or not to_date:
+            search_date_range = True
+        
+        else:
+            min_date = datetime.strptime(from_date, DEFAULT_DATE_FORMAT).astimezone(tz=self._localzone)
+            max_date = datetime.strptime(to_date, DEFAULT_DATE_FORMAT).astimezone(tz=self._localzone)
+
+        for date, summary in summary_report.items():
+            summary['date'] = date
+            reports_list.append(summary)
+            # Update the header in case there are new keys in the summaries
+            reports_header.update(summary.keys())
+
+            if search_date_range:
+                date_dt = datetime.strptime(date, DEFAULT_DATE_FORMAT).astimezone(tz=self._localzone)
+                if date_dt < min_date:
+                    min_date = date_dt
+                if date_dt > max_date:
+                    max_date = date_dt
+
+        logger.debug(f"CSV header = {reports_header}")
+        logger.debug(f"Reports list: {reports_list}")
+
+        # Prepare the CSV filename
+        csv_filename = output_path / f"woffu_summary_report_from_{min_date.strftime(DEFAULT_DATE_FORMAT)}_to_{max_date.strftime(DEFAULT_DATE_FORMAT)}.csv"
+        csv_filename.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(csv_filename, 'w', newline=os.linesep) as csvfile:
+            # Prepare the CSV writer
+            writer = csv.DictWriter(csvfile, fieldnames=sorted(reports_header), delimiter=delimiter, quoting=csv.QUOTE_STRINGS)
+            writer.writeheader()
+
+            # Write rows
+            for report in reports_list:
+                writer.writerow(report)
+
+        logger.info(f"✅ CSV exported to {csv_filename}")
