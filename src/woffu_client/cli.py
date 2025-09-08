@@ -22,11 +22,11 @@ def main() -> None:
     )
 
     parser.add_argument(
-        "--interactive",
+        "--non-interactive",
         required=False,
-        type=bool,
-        help=f"Set session as interactive or non-interactive (default: True)",
-        default=True
+        action='store_true',
+        help=f"Set session as non-interactive (default: False)",
+        default=False
     )
 
     subparsers = parser.add_subparsers(title="actions", dest="command", required=True)
@@ -67,7 +67,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # Instantiate client
-    client = WoffuAPIClient(config=args.config, interactive=args.interactive)
+    client = WoffuAPIClient(config=args.config, interactive=not args.non_interactive)
     match args.command:
         case "download-all-documents":
             try:
