@@ -19,7 +19,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python: [3.10, 3.11, 3.12]
+        python: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v3
       # Checkout repo so that test code and pyproject.toml are available
@@ -75,7 +75,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python: [3.10, 3.11, 3.12]
+        python: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v3
         # Checkout repo here is required so pyproject.toml and source code exist.
