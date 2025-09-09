@@ -37,7 +37,7 @@ jobs:
       - name: Cache pip
         uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
+          path: ${{ runner.os == 'macos-latest' && '~/Library/Caches/pip' || '~/.cache/pip' }}
           key: ${{ runner.os }}-pip-${{ matrix.python }}-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pip-${{ matrix.python }}-
@@ -95,7 +95,7 @@ jobs:
       - name: Cache pip
         uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
+          path: ${{ runner.os == 'macos-latest' && '~/Library/Caches/pip' || '~/.cache/pip' }}
           key: build-pip-${{ runner.os }}-${{ matrix.python }}-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: |
             build-pip-${{ runner.os }}-${{ matrix.python }}-
@@ -148,7 +148,7 @@ jobs:
       - name: Cache pip
         uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
+          path: ${{ runner.os == 'macos-latest' && '~/Library/Caches/pip' || '~/.cache/pip' }}
           key: publish-pip-${{ runner.os }}-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: |
             publish-pip-${{ runner.os }}-
