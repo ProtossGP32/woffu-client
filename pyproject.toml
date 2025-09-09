@@ -38,7 +38,6 @@ omit = [
     "./tests/*"
 ]
 
-
 [tool.coverage.report]
 # Regexes for lines to exclude from consideration
 exclude_also = [
@@ -63,3 +62,16 @@ skip_empty = true
 
 [tool.coverage.html]
 directory = "coverage_html_report"
+
+[tool.twine]
+repository = "pypi"
+
+[tool.twine.repositories.pypi]
+repository = "https://upload.pypi.org/legacy/"
+username = "__token__"
+password = "{env:PYPI_API_TOKEN}"
+
+[tool.twine.repositories.github]
+repository = "https://pypi.pkg.github.com/${OWNER}/"
+username = "{env:GITHUB_ACTOR}"
+password = "{env:GITHUB_TOKEN}"
