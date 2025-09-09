@@ -34,6 +34,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
+      - name: Ensure pip cache directory exists
+        run: mkdir -p ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
+
       - name: Cache pip
         uses: actions/cache@v4
         with:
@@ -92,6 +95,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
+      - name: Ensure pip cache directory exists
+        run: mkdir -p ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
+
       - name: Cache pip
         uses: actions/cache@v4
         with:
@@ -144,6 +150,9 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
+
+      - name: Ensure pip cache directory exists
+        run: mkdir -p ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
 
       - name: Cache pip
         uses: actions/cache@v4
