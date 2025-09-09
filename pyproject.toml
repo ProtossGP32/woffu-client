@@ -10,7 +10,9 @@ description = "Woffu API client with access to several endpoints."
 authors = [{name="Marc Palacín Marfil", email="marc.palacin@bsc.es"}]
 readme = "README.md"
 license = {text = "MIT"}
-dependencies = []
+dependencies = [
+    "tzlocal==5.3.1"
+]
 
 [project.optional-dependencies]
 dev = [
