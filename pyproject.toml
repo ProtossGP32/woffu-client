@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "woffu_client"
-version = "0.1.0"
+version = "0.0.1"
 requires-python = ">=3.10,<3.13"
 description = "Woffu API client with access to several endpoints."
 authors = [{name="Marc Palacín Marfil", email="marc.palacin@bsc.es"}]

@@ -164,7 +164,17 @@ jobs:
       - name: Merge dist artifacts
         run: |
           mkdir -p merged_dist
-          cp -r artifacts/**/** merged_dist/ || true
+          # Iterate over all downloaded artifacts safely
+          find artifacts -type f \( -name "*.whl" -o -name "*.tar.gz" \) | while read -r file; do
+              base=$(basename "$file")
+              dir=$(basename "$(dirname "$file")")  # e.g., dist-windows-latest-py3.10
+              if [[ "$base" == *.whl ]]; then
+                  cp "$file" "merged_dist/${base%.whl}-${dir}.whl"
+              elif [[ "$base" == *.tar.gz ]]; then
+                  cp "$file" "merged_dist/${base%.tar.gz}-${dir}.tar.gz"
+              fi
+          done
+          # List merged_dist contents for debugging
           ls -l merged_dist
         # This merges all OS/Python build outputs into a single directory for publishing
 
@@ -178,7 +188,7 @@ jobs:
           if not twine_repos:
               raise ValueError("No repositories defined in [tool.twine.repositories]")
 
-          owner = os.environ["REPO_OWNER"]
+          owner = os.environ.get("REPO_OWNER", "")
 
           lines = ["[distutils]", "index-servers = " + " ".join(twine_repos.keys())]
 
@@ -191,17 +201,21 @@ jobs:
               password = repo.get("password", "")
 
               if username.startswith("{env:") and username.endswith("}"):
-                  username = os.environ.get(username[5:-1], "")
+                  env_var = username[5:-1]
+                  username = os.environ.get(env_var, "")
               if password.startswith("{env:") and password.endswith("}"):
-                  password = os.environ.get(password[5:-1], "")
+                  env_var = password[5:-1]
+                  password = os.environ.get(env_var, "")
 
-              # Debug output without exposing credentials
+              # Safe debug output
               print(f"Configured repo [{name}] → {url}")
+              print(f"  username set: {'✅' if username else '❌'}")
+              print(f"  password set: {'✅' if password else '❌'}")
 
               lines.extend([
                   f"\n[{name}]",
                   f"repository: {url}",
-                  f"username: {username}",
+                  f"username: {username if name != 'pypi' else '__token__'}",
                   f"password: {'***' if password else ''}"
               ])
 
@@ -211,10 +225,6 @@ jobs:
           print("✅ .pypirc generated successfully")
           EOF
 
-      - name: Show generated .pypirc (safe output)
-        run: |
-          sed -E 's/(password: ).*/\1***REDACTED***/' ~/.pypirc
-          
       - name: Publish with Twine
         run: python -m twine upload merged_dist/* --config-file ~/.pypirc
 
