@@ -113,7 +113,8 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist
+          # Use unique artifact names per OS/Python version to avoid conflicts
+          name: dist-${{ matrix.os }}-py${{ matrix.python }}
           path: dist/*
           if-no-files-found: warn
           overwrite: true
@@ -146,8 +147,14 @@ jobs:
       - name: Download built artifacts
         uses: actions/download-artifact@v4
         with:
-          name: dist
-          path: dist
+          path: artifacts
+
+      - name: Merge dist artifacts
+        run: |
+          mkdir -p merged_dist
+          cp -r artifacts/**/** merged_dist/ || true
+          ls -l merged_dist
+        # This merges all OS/Python build outputs into a single directory for publishing
 
       - name: Generate temporary .pypirc from pyproject.toml
         run: |
@@ -178,13 +185,13 @@ jobs:
           EOF
 
       - name: Publish with Twine
-        run: python -m twine upload dist/* --config-file ~/.pypirc
+        run: python -m twine upload merged_dist/* --config-file ~/.pypirc
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           generate_release_notes: true
-          files: dist/*
+          files: merged_dist/*
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
         env:
