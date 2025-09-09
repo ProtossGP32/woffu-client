@@ -50,7 +50,7 @@ def main() -> None:
 
     # ---- sign ----
     sign_parser = subparsers.add_parser(
-        "sign", help="Send sing in or sign out request based on the '--sign-type' argument"
+        "sign", help="Send sign in or sign out request based on the '--sign-type' argument"
     )
 
     sign_parser.add_argument(
