@@ -115,6 +115,8 @@ jobs:
         with:
           name: dist
           path: dist/*
+          if-no-files-found: warn
+          overwrite: true
 
   publish:
     name: Publish Package
