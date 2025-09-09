@@ -226,7 +226,7 @@ jobs:
           EOF
 
       - name: Publish with Twine
-        run: python -m twine upload merged_dist/* --config-file ~/.pypirc
+        run: python -m twine upload merged_dist/* --config-file ~/.pypirc --verbose
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
