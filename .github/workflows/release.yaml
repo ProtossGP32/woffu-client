@@ -7,7 +7,7 @@ on:
       - 'feat/**'
     # Trigger workflow on tag push explicitly
     tags:
-      - 'v*.*.*'
+      - 'v*.*.*'  # trigger only on tags for releases
   pull_request:
     branches:
       - main
@@ -30,12 +30,12 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: Cache pip
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: pip-${{ runner.os }}-${{ matrix.python }}-${{ hashFiles('**/pyproject.toml') }}
+          key: ${{ runner.os }}-pip-${{ matrix.python }}-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: |
-            pip-${{ runner.os }}-${{ matrix.python }}-
+            ${{ runner.os }}-pip-${{ matrix.python }}-
 
       - name: Install dependencies
         run: |
@@ -59,6 +59,7 @@ jobs:
         id: get_version
         run: |
           TAG_NAME=${GITHUB_REF##*/}
+          echo "Tag name: $TAG_NAME"
           echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
 
       - name: Update pyproject.toml version locally
@@ -87,7 +88,7 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: Cache pip
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: build-pip-${{ runner.os }}-${{ matrix.python }}-${{ hashFiles('**/pyproject.toml') }}
@@ -95,10 +96,10 @@ jobs:
             build-pip-${{ runner.os }}-${{ matrix.python }}-
 
       - name: Cache built artifacts
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: dist
-          key: build-dist-${{ runner.os }}-${{ hashFiles('**/pyproject.toml') }}
+          key: build-dist-${{ runner.os }}-${{ github.ref_name }}
           restore-keys: |
             build-dist-${{ runner.os }}-
 
@@ -110,7 +111,7 @@ jobs:
         # Uses the updated pyproject.toml version
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/*
@@ -127,10 +128,10 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.11
+          python-version: "3.11"
 
       - name: Cache pip
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: publish-pip-${{ runner.os }}-${{ hashFiles('**/pyproject.toml') }}
@@ -141,7 +142,7 @@ jobs:
         run: python -m pip install --upgrade pip twine tomli
 
       - name: Download built artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist
