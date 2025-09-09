@@ -4,13 +4,13 @@ on:
   push:
     branches:
       - main
-      - develop
-      - 'feature/**'
-      - 'v*.*.*'  # tags for releases
+      - 'feat/**'
+    # Trigger workflow on tag push explicitly
+    tags:
+      - 'v*.*.*'
   pull_request:
     branches:
       - main
-      - develop
 
 jobs:
   test:
@@ -22,6 +22,7 @@ jobs:
         python: [3.10, 3.11, 3.12]
     steps:
       - uses: actions/checkout@v3
+      # Checkout repo so that test code and pyproject.toml are available
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -32,9 +33,9 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.python }}-${{ hashFiles('**/pyproject.toml') }}
+          key: pip-${{ runner.os }}-${{ matrix.python }}-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: |
-            ${{ runner.os }}-pip-${{ matrix.python }}-
+            pip-${{ runner.os }}-${{ matrix.python }}-
 
       - name: Install dependencies
         run: |
@@ -52,26 +53,19 @@ jobs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
       - uses: actions/checkout@v3
+      # Checkout repo so pyproject.toml exists to modify it
 
       - name: Extract version from tag
         id: get_version
         run: |
           TAG_NAME=${GITHUB_REF##*/}
-          echo "Tag name: $TAG_NAME"
           echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
 
-      - name: Update pyproject.toml version
+      - name: Update pyproject.toml version locally
         run: |
           VERSION=${{ steps.get_version.outputs.version }}
           sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
-
-      - name: Commit updated version
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml
-          git commit -m "Set version to ${{ steps.get_version.outputs.version }} [skip ci]" || echo "No changes to commit"
-          git push origin HEAD:${GITHUB_REF#refs/heads/} || echo "Push skipped"
+          # Version is updated locally in this job's workspace
 
   build:
     name: Build ${{ matrix.os }} / Python ${{ matrix.python }}
@@ -84,6 +78,8 @@ jobs:
         python: [3.10, 3.11, 3.12]
     steps:
       - uses: actions/checkout@v3
+        # Checkout repo here is required so pyproject.toml and source code exist.
+        # The workspace already includes the updated pyproject.toml from set-version via `needs`.
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -102,7 +98,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: dist
-          key: build-dist-${{ runner.os }}-${{ github.ref_name }}
+          key: build-dist-${{ runner.os }}-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: |
             build-dist-${{ runner.os }}-
 
@@ -111,6 +107,7 @@ jobs:
 
       - name: Build package
         run: python -m build --sdist --wheel
+        # Uses the updated pyproject.toml version
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
@@ -125,6 +122,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v3
+      # Required to access pyproject.toml for generating .pypirc
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -151,37 +149,29 @@ jobs:
       - name: Generate temporary .pypirc from pyproject.toml
         run: |
           python - <<'EOF'
-          import os
-          import tomli
+          import os, tomli
 
           pyproject = tomli.load(open("pyproject.toml", "rb"))
           twine_repos = pyproject.get("tool", {}).get("twine", {}).get("repositories", {})
           if not twine_repos:
               raise ValueError("No repositories defined in [tool.twine.repositories]")
 
-          pypirc_lines = ["[distutils]", "index-servers ="]
-          for repo_name in twine_repos:
-              pypirc_lines.append(f"    {repo_name}")
+          lines = ["[distutils]", "index-servers = " + " ".join(twine_repos.keys())]
 
-          for repo_name, repo_info in twine_repos.items():
-              pypirc_lines.append(f"\n[{repo_name}]")
-              url = repo_info.get("repository")
-              username = repo_info.get("username", "")
-              password = repo_info.get("password", "")
+          for name, repo in twine_repos.items():
+              url = repo.get("repository")
+              username = repo.get("username", "")
+              password = repo.get("password", "")
 
-              if password.startswith("{env:") and password.endswith("}"):
-                  env_var = password[5:-1]
-                  password = os.environ.get(env_var, "")
               if username.startswith("{env:") and username.endswith("}"):
-                  env_var = username[5:-1]
-                  username = os.environ.get(env_var, "")
+                  username = os.environ.get(username[5:-1], "")
+              if password.startswith("{env:") and password.endswith("}"):
+                  password = os.environ.get(password[5:-1], "")
 
-              pypirc_lines.append(f"repository: {url}")
-              pypirc_lines.append(f"username: {username}")
-              pypirc_lines.append(f"password: {password}")
+              lines.extend([f"\n[{name}]", f"repository: {url}", f"username: {username}", f"password: {password}"])
 
           with open(os.path.expanduser("~/.pypirc"), "w") as f:
-              f.write("\n".join(pypirc_lines))
+              f.write("\n".join(lines))
           EOF
 
       - name: Publish with Twine
