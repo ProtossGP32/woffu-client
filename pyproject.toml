@@ -72,8 +72,3 @@ repository = "pypi"
 repository = "https://upload.pypi.org/legacy/"
 username = "__token__"
 password = "{env:PYPI_API_TOKEN}"
-
-[tool.twine.repositories.github]
-repository = "https://pypi.pkg.github.com/${OWNER}/"
-username = "{env:GITHUB_ACTOR}"
-password = "{env:GITHUB_TOKEN}"
