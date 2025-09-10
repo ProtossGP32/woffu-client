@@ -119,7 +119,7 @@ jobs:
 
       - name: Show pyproject.toml content (Should be modified with the correct version)
         run: cat pyproject.toml
-
+      
       - name: Build package
         run: python -m build --sdist --wheel
         # Uses the updated pyproject.toml version
@@ -173,30 +173,39 @@ jobs:
         with:
           path: artifacts
 
-      - name: Merge and filter dist artifacts for current version
+      - name: Merge dist artifacts (keep all OS/Python variants matching tag)
         run: |
           mkdir -p merged_dist
           VERSION=${GITHUB_REF_NAME#v}  # strips leading "v" from tag
 
-          find artifacts -type f \( -name "*.whl" -o -name "*.tar.gz" \) | while read -r file; do
+          # find all artifact files that include the version in their name and copy them
+          # into merged_dist, appending the artifact directory (OS/Python) to keep each variant.
+          find artifacts -type f \( -name "*${VERSION}*.whl" -o -name "*${VERSION}*.tar.gz" \) -print0 | \
+          while IFS= read -r -d '' file; do
               base=$(basename "$file")
-              # Only keep artifacts that match current version
-              if [[ "$base" == *"$VERSION"* ]]; then
-                  dir=$(basename "$(dirname "$file")")
-                  # Copy for GitHub Release (keep OS/Python suffix)
-                  cp "$file" "merged_dist/$base"
-                  # Copy canonical files for PyPI (strip OS/Python suffix)
-                  if [[ "$base" == *.whl ]]; then
-                      cp "$file" "merged_dist/$(echo $base | sed -E 's/-dist-.*-py[0-9\.]+//').whl"
-                  elif [[ "$base" == *.tar.gz ]]; then
-                      cp "$file" "merged_dist/$(echo $base | sed -E 's/-dist-.*//').tar.gz"
-                  fi
+              dir=$(basename "$(dirname "$file")")  # e.g., dist-windows-latest-py3.10
+
+              # handle .tar.gz specially
+              if [[ "$base" == *.tar.gz ]]; then
+                  name="${base%.tar.gz}"
+                  ext="tar.gz"
+              else
+                  name="${base%.*}"
+                  ext="${base##*.}"
+              fi
+
+              dest="merged_dist/${name}-${dir}.${ext}"
+
+              if [ -e "$dest" ]; then
+                  echo "Skipping existing $dest"
+              else
+                  cp "$file" "$dest"
               fi
           done
 
-          # Debug
-          echo "Merged artifacts:"
+          # List merged_dist contents for debugging
           ls -l merged_dist
+        # This keeps every OS/Python build artifact that contains the tag version in its filename
 
       - name: Generate temporary .pypirc from pyproject.toml
         run: |
