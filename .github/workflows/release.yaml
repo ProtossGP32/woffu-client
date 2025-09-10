@@ -144,7 +144,7 @@ jobs:
       REPO_OWNER: ${{ github.repository_owner }}
     steps:
       - uses: actions/checkout@v3
-      # Required to access pyproject.toml for generating .pypirc
+        # Required to access pyproject.toml for generating .pypirc
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -170,22 +170,30 @@ jobs:
         with:
           path: artifacts
 
-      - name: Merge dist artifacts
+      - name: Merge and filter dist artifacts for current version
         run: |
           mkdir -p merged_dist
-          # Iterate over all downloaded artifacts safely
+          VERSION=${GITHUB_REF_NAME#v}  # strips leading "v" from tag
+
           find artifacts -type f \( -name "*.whl" -o -name "*.tar.gz" \) | while read -r file; do
               base=$(basename "$file")
-              dir=$(basename "$(dirname "$file")")  # e.g., dist-windows-latest-py3.10
-              if [[ "$base" == *.whl ]]; then
-                  cp "$file" "merged_dist/${base%.whl}-${dir}.whl"
-              elif [[ "$base" == *.tar.gz ]]; then
-                  cp "$file" "merged_dist/${base%.tar.gz}-${dir}.tar.gz"
+              # Only keep artifacts that match current version
+              if [[ "$base" == *"$VERSION"* ]]; then
+                  dir=$(basename "$(dirname "$file")")
+                  # Copy for GitHub Release (keep OS/Python suffix)
+                  cp "$file" "merged_dist/$base"
+                  # Copy canonical files for PyPI (strip OS/Python suffix)
+                  if [[ "$base" == *.whl ]]; then
+                      cp "$file" "merged_dist/$(echo $base | sed -E 's/-dist-.*-py[0-9\.]+//').whl"
+                  elif [[ "$base" == *.tar.gz ]]; then
+                      cp "$file" "merged_dist/$(echo $base | sed -E 's/-dist-.*//').tar.gz"
+                  fi
               fi
           done
-          # List merged_dist contents for debugging
+
+          # Debug
+          echo "Merged artifacts:"
           ls -l merged_dist
-        # This merges all OS/Python build outputs into a single directory for publishing
 
       - name: Generate temporary .pypirc from pyproject.toml
         run: |
@@ -202,7 +210,7 @@ jobs:
           lines = ["[distutils]", "index-servers = " + " ".join(twine_repos.keys())]
 
           for name, repo in twine_repos.items():
-              url = repo.get("repository")
+              url = repo.get("repository", "")
               if "${OWNER}" in url:
                   url = url.replace("${OWNER}", owner)
 
@@ -234,8 +242,11 @@ jobs:
           print("✅ .pypirc generated successfully")
           EOF
 
-      - name: Publish with Twine
-        run: python -m twine upload merged_dist/* --config-file ~/.pypirc --verbose
+      - name: Publish canonical artifacts to PyPI
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          python -m twine upload merged_dist/*"$VERSION"*.whl merged_dist/*"$VERSION"*.tar.gz \
+            --config-file ~/.pypirc --verbose
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
