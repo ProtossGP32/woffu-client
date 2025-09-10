@@ -255,7 +255,6 @@ jobs:
               raise ValueError("No repositories defined in [tool.twine.repositories]")
 
           owner = os.environ.get("REPO_OWNER", "")
-
           lines = ["[distutils]", "index-servers = " + " ".join(twine_repos.keys())]
 
           for name, repo in twine_repos.items():
@@ -266,29 +265,23 @@ jobs:
               username = repo.get("username", "")
               password = repo.get("password", "")
 
-              if username.startswith("{env:") and username.endswith("}"):
-                  env_var = username[5:-1]
-                  username = os.environ.get(env_var, "")
               if password.startswith("{env:") and password.endswith("}"):
                   env_var = password[5:-1]
                   password = os.environ.get(env_var, "")
+                  print(f"🔑 Loaded password from env var: {env_var} → {'✅ FOUND' if password else '❌ MISSING'}")
 
-              # Safe debug output
-              print(f"Configured repo [{name}] → {url}")
-              print(f"  username set: {'✅' if username else '❌'}")
-              print(f"  password set: {'✅' if password else '❌'}")
-
+              # ⚠️ Here we write the REAL password (not masked)
               lines.extend([
                   f"\n[{name}]",
                   f"repository: {url}",
                   f"username: {username if name != 'pypi' else '__token__'}",
-                  f"password: {'***' if password else ''}"
+                  f"password: {password}"
               ])
 
           with open(os.path.expanduser("~/.pypirc"), "w") as f:
               f.write("\n".join(lines))
 
-          print("✅ .pypirc generated successfully")
+          print("✅ .pypirc generated successfully (password written, not masked)")
           EOF
 
       - name: Publish canonical artifacts to PyPI
