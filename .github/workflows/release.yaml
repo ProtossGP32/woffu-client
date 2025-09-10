@@ -213,27 +213,26 @@ jobs:
           path: artifacts
 
       - name: Merge dist artifacts for current version
+        shell: bash
         run: |
-          # Debug: show available artifacts
-          echo "Available artifacts:"
-          ls -l artifacts
-          
-          mkdir -p merged_dist
-          VERSION=${GITHUB_REF_NAME#v}  # strips leading "v" from tag
-          
-          # Debug: show current version
-          echo "Current version: ${VERSION}"
-          find artifacts -type f \( -name "*.whl" -o -name "*.tar.gz" \) | while read -r file; do
-              base=$(basename "$file")
-              # Only keep artifacts that match current version
-              if [[ "$base" == *"$VERSION"* ]]; then
-                  cp "$file" "merged_dist/$base"
-              fi
-          done
+            mkdir -p merged_dist
+            VERSION=${GITHUB_REF_NAME#v}  # strips leading "v" from tag
 
-          # Debug
-          echo "Merged artifacts:"
-          ls -l merged_dist
+            echo "Current version: ${VERSION}"
+
+            # Recursively find all wheel and sdist files
+            find artifacts -type f \( -name "*.whl" -o -name "*.tar.gz" \) | while read file; do
+                base=$(basename "$file")
+                case "$base" in
+                    *"$VERSION"*)
+                        cp "$file" "merged_dist/$base"
+                        ;;
+                esac
+            done
+
+            # Debug
+            echo "Merged artifacts:"
+            ls -l merged_dist
 
       - name: Generate temporary .pypirc from pyproject.toml
         run: |
