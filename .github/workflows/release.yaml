@@ -214,9 +214,15 @@ jobs:
 
       - name: Merge dist artifacts for current version
         run: |
+          # Debug: show available artifacts
+          echo "Available artifacts:"
+          ls -l artifacts
+          
           mkdir -p merged_dist
           VERSION=${GITHUB_REF_NAME#v}  # strips leading "v" from tag
-
+          
+          # Debug: show current version
+          echo "Current version: ${VERSION}"
           find artifacts -type f \( -name "*.whl" -o -name "*.tar.gz" \) | while read -r file; do
               base=$(basename "$file")
               # Only keep artifacts that match current version
