@@ -20,7 +20,8 @@ on:
 jobs:
   test:
     name: Test ${{ matrix.os }} / Python ${{ matrix.python }}
-    runs-on: [ self-hosted, "${{ matrix.os }}" ]
+    #runs-on: [ self-hosted, "${{ matrix.os }}" ]
+    runs-on: self-hosted
     strategy:
       matrix:
         # macOS and Windows disabled to save free GitHub Actions minutes.
@@ -58,7 +59,8 @@ jobs:
 
   set-version:
     name: Set version from tag
-    runs-on: ubuntu-latest
+    #runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: startsWith(github.ref, 'refs/tags/')
     outputs:
       version: ${{ steps.get_version.outputs.version }}
@@ -75,7 +77,8 @@ jobs:
 
   build:
     name: Build ${{ matrix.os }} / Python ${{ matrix.python }}
-    runs-on: [ self-hosted, "${{ matrix.os }}" ]
+    #runs-on: [ self-hosted, "${{ matrix.os }}" ]
+    runs-on: self-hosted
     needs: [test, set-version]
     if: startsWith(github.ref, 'refs/tags/')
     strategy:
@@ -156,7 +159,8 @@ jobs:
 
   publish:
     name: Publish Package
-    runs-on: [ self-hosted, "ubuntu-latest" ]
+    #runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
     env:
