@@ -61,20 +61,15 @@ jobs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
       - uses: actions/checkout@v3
-      # Checkout repo so pyproject.toml exists to modify it
+      # Checkout repo so pyproject.toml exists to parse version
 
       - name: Extract version from tag
         id: get_version
         run: |
           TAG_NAME=${GITHUB_REF##*/}
           echo "Tag name: $TAG_NAME"
-          echo "version=$TAG_NAME" >> $GITHUB_OUTPUT
-
-      - name: Update pyproject.toml version locally
-        run: |
-          VERSION=${{ steps.get_version.outputs.version }}
-          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
-          # Version is updated locally in this job's workspace
+          # strip leading "v" just in case
+          echo "version=${TAG_NAME#v}" >> $GITHUB_OUTPUT
 
   build:
     name: Build ${{ matrix.os }} / Python ${{ matrix.python }}
@@ -88,12 +83,17 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         # Checkout repo here is required so pyproject.toml and source code exist.
-        # The workspace already includes the updated pyproject.toml from set-version via `needs`.
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python }}
+
+      - name: Update pyproject.toml version
+        run: |
+          VERSION=${{ needs.set-version.outputs.version }}
+          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+          echo "pyproject.toml updated to version $VERSION"
 
       - name: Ensure pip cache directory exists
         run: mkdir -p ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
@@ -117,9 +117,9 @@ jobs:
       - name: Install build tools
         run: python -m pip install --upgrade pip build
 
-      - name: Show pyproject.toml content (Should be modified with the correct version)
+      - name: DEBUG - Show pyproject.toml content (Should be modified with the correct version)
         run: cat pyproject.toml
-      
+
       - name: Build package
         run: python -m build --sdist --wheel
         # Uses the updated pyproject.toml version
@@ -168,44 +168,30 @@ jobs:
       - name: Install Twine and tomli
         run: python -m pip install --upgrade pip twine tomli
 
+      - name: Purge old merged artifacts
+        run: rm -rf merged_dist
+
       - name: Download built artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Merge dist artifacts (keep all OS/Python variants matching tag)
+      - name: Merge dist artifacts for current version
         run: |
           mkdir -p merged_dist
           VERSION=${GITHUB_REF_NAME#v}  # strips leading "v" from tag
 
-          # find all artifact files that include the version in their name and copy them
-          # into merged_dist, appending the artifact directory (OS/Python) to keep each variant.
-          find artifacts -type f \( -name "*${VERSION}*.whl" -o -name "*${VERSION}*.tar.gz" \) -print0 | \
-          while IFS= read -r -d '' file; do
+          find artifacts -type f \( -name "*.whl" -o -name "*.tar.gz" \) | while read -r file; do
               base=$(basename "$file")
-              dir=$(basename "$(dirname "$file")")  # e.g., dist-windows-latest-py3.10
-
-              # handle .tar.gz specially
-              if [[ "$base" == *.tar.gz ]]; then
-                  name="${base%.tar.gz}"
-                  ext="tar.gz"
-              else
-                  name="${base%.*}"
-                  ext="${base##*.}"
-              fi
-
-              dest="merged_dist/${name}-${dir}.${ext}"
-
-              if [ -e "$dest" ]; then
-                  echo "Skipping existing $dest"
-              else
-                  cp "$file" "$dest"
+              # Only keep artifacts that match current version
+              if [[ "$base" == *"$VERSION"* ]]; then
+                  cp "$file" "merged_dist/$base"
               fi
           done
 
-          # List merged_dist contents for debugging
+          # Debug
+          echo "Merged artifacts:"
           ls -l merged_dist
-        # This keeps every OS/Python build artifact that contains the tag version in its filename
 
       - name: Generate temporary .pypirc from pyproject.toml
         run: |
@@ -254,7 +240,7 @@ jobs:
           print("✅ .pypirc generated successfully")
           EOF
 
-      - name: Publish canonical artifacts to PyPI
+      - name: Publish artifacts to PyPI
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           python -m twine upload merged_dist/*"$VERSION"*.whl merged_dist/*"$VERSION"*.tar.gz \
