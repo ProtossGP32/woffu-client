@@ -108,6 +108,8 @@ jobs:
             build-dist-${{ runner.os }}-
 
       - name: Update pyproject.toml version
+        shell: bash
+        if: runner.os != 'Windows'
         run: |
           VERSION=${{ needs.set-version.outputs.version }}
           if [[ "$RUNNER_OS" == "macOS" ]]; then
@@ -116,6 +118,16 @@ jobs:
             sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
           fi
           echo "pyproject.toml updated to version $VERSION"
+
+      - name: Update pyproject.toml version (Windows)
+        shell: pwsh
+        if: runner.os == 'Windows'
+        run: |
+          $Version = "${{ needs.set-version.outputs.version }}"
+          (Get-Content pyproject.toml) |
+            ForEach-Object { $_ -replace '^version = .*', "version = `"$Version`"" } |
+            Set-Content pyproject.toml
+          Write-Host "pyproject.toml updated to version $Version"
 
       - name: DEBUG - Show pyproject.toml content (Should be modified with the correct version)
         run: cat pyproject.toml
