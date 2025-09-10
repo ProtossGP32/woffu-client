@@ -117,6 +117,9 @@ jobs:
       - name: Install build tools
         run: python -m pip install --upgrade pip build
 
+      - name: Show pyproject.toml content (Should be modified with the correct version)
+        run: cat pyproject.toml
+
       - name: Build package
         run: python -m build --sdist --wheel
         # Uses the updated pyproject.toml version
