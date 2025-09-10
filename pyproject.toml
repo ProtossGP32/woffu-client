@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "woffu_client"
-version = "X.Y.Z" # This will be replaced by the CI pipeline
+version = "0.0.0" # This will be replaced by the CI pipeline
 requires-python = ">=3.10,<3.13"
 description = "Woffu API client with access to several endpoints."
 authors = [{name="Marc Palacín Marfil", email="marc.palacin@bsc.es"}]
