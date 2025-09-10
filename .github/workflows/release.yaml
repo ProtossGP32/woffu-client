@@ -20,10 +20,12 @@ on:
 jobs:
   test:
     name: Test ${{ matrix.os }} / Python ${{ matrix.python }}
-    runs-on: ${{ matrix.os }}
+    runs-on: [ self-hosted, "${{ matrix.os }}" ]
     strategy:
       matrix:
-        #os: [ubuntu-latest, macos-latest, windows-latest]
+        # macOS and Windows disabled to save free GitHub Actions minutes.
+        # Uncomment to re-enable multi-OS testing:
+        # os: [ubuntu-latest, macos-latest, windows-latest]
         os: [ubuntu-latest]
         python: ["3.10", "3.11", "3.12"]
     steps:
@@ -73,12 +75,14 @@ jobs:
 
   build:
     name: Build ${{ matrix.os }} / Python ${{ matrix.python }}
-    runs-on: ${{ matrix.os }}
+    runs-on: [ self-hosted, "${{ matrix.os }}" ]
     needs: [test, set-version]
     if: startsWith(github.ref, 'refs/tags/')
     strategy:
       matrix:
-        #os: [ubuntu-latest, macos-latest, windows-latest]
+        # macOS and Windows disabled to save free GitHub Actions minutes.
+        # Uncomment to re-enable multi-OS testing:
+        # os: [ubuntu-latest, macos-latest, windows-latest]
         os: [ubuntu-latest]
         python: ["3.10", "3.11", "3.12"]
     steps:
@@ -152,7 +156,7 @@ jobs:
 
   publish:
     name: Publish Package
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, "ubuntu-latest" ]
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
     env:
