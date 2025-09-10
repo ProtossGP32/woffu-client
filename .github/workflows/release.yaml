@@ -215,6 +215,9 @@ jobs:
       - name: Merge dist artifacts for current version
         shell: bash
         run: |
+            echo "Available artifacts:"
+            ls -lR artifacts
+            
             mkdir -p merged_dist
             VERSION=${GITHUB_REF_NAME#v}  # strips leading "v" from tag
 
@@ -223,9 +226,10 @@ jobs:
             # Recursively find all wheel and sdist files
             find artifacts -type f \( -name "*.whl" -o -name "*.tar.gz" \) | while read file; do
                 base=$(basename "$file")
+                dir=$(basename $(dirname "$file"))  # get the parent directory (OS+Python info)
                 case "$base" in
                     *"$VERSION"*)
-                        cp "$file" "merged_dist/$base"
+                        cp "$file" "merged_dist/${dir}-${base}"
                         ;;
                 esac
             done
