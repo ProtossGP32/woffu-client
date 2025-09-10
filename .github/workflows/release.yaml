@@ -28,7 +28,9 @@ jobs:
         # Uncomment to re-enable multi-OS testing:
         # os: [ubuntu-latest, macos-latest, windows-latest]
         os: [ubuntu-latest]
-        python: ["3.10", "3.11", "3.12"]
+        #python: ["3.10", "3.11", "3.12"]
+        # Required patch version for Rocky Linux OS
+        python: ["3.10.18", "3.11.13", "3.12.11"]
     steps:
       - uses: actions/checkout@v3
       # Checkout repo so that test code and pyproject.toml are available
@@ -87,7 +89,9 @@ jobs:
         # Uncomment to re-enable multi-OS testing:
         # os: [ubuntu-latest, macos-latest, windows-latest]
         os: [ubuntu-latest]
-        python: ["3.10", "3.11", "3.12"]
+        #python: ["3.10", "3.11", "3.12"]
+        # Required patch version for Rocky Linux OS
+        python: ["3.10.18", "3.11.13", "3.12.11"]
     steps:
       - uses: actions/checkout@v3
         # Checkout repo here is required so pyproject.toml and source code exist.
@@ -176,7 +180,9 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          #python-version: "3.11"
+          # Required patch version for Rocky Linux (self-hosted)
+          python-version: "3.11.13"
 
       - name: Ensure pip cache directory exists
         run: mkdir -p ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
