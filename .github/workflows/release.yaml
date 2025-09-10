@@ -1,5 +1,11 @@
 name: CI
 
+# Required permissions for self-hosted runners
+permissions:
+  contents: write  # ✅ Required for softprops/action-gh-release to create a release
+  packages: write  # (optional, if you ever use GHCR)
+  id-token: write  # (optional, if you ever use OIDC for secrets)
+
 # Cancel any in-progress workflow run for the same branch or tag
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -288,7 +294,7 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           python -m twine upload merged_dist/*"$VERSION"*.whl merged_dist/*"$VERSION"*.tar.gz \
-            --config-file ~/.pypirc --verbose
+            --config-file ~/.pypirc
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -297,5 +303,4 @@ jobs:
           files: release_artifacts/*
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}   # ✅ explicit
