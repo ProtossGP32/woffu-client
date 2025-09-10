@@ -61,7 +61,6 @@ jobs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
       - uses: actions/checkout@v3
-      # Checkout repo so pyproject.toml exists to parse version
 
       - name: Extract version from tag
         id: get_version
@@ -89,12 +88,6 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Update pyproject.toml version
-        run: |
-          VERSION=${{ needs.set-version.outputs.version }}
-          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
-          echo "pyproject.toml updated to version $VERSION"
-
       - name: Ensure pip cache directory exists
         run: mkdir -p ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
 
@@ -114,11 +107,21 @@ jobs:
           restore-keys: |
             build-dist-${{ runner.os }}-
 
-      - name: Install build tools
-        run: python -m pip install --upgrade pip build
+      - name: Update pyproject.toml version
+        run: |
+          VERSION=${{ needs.set-version.outputs.version }}
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            sed -i '' "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+          else
+            sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+          fi
+          echo "pyproject.toml updated to version $VERSION"
 
       - name: DEBUG - Show pyproject.toml content (Should be modified with the correct version)
         run: cat pyproject.toml
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip build
 
       - name: Build package
         run: python -m build --sdist --wheel
@@ -147,7 +150,6 @@ jobs:
       REPO_OWNER: ${{ github.repository_owner }}
     steps:
       - uses: actions/checkout@v3
-        # Required to access pyproject.toml for generating .pypirc
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -240,7 +242,7 @@ jobs:
           print("✅ .pypirc generated successfully")
           EOF
 
-      - name: Publish artifacts to PyPI
+      - name: Publish canonical artifacts to PyPI
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           python -m twine upload merged_dist/*"$VERSION"*.whl merged_dist/*"$VERSION"*.tar.gz \
