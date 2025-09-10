@@ -215,28 +215,34 @@ jobs:
       - name: Merge dist artifacts for current version
         shell: bash
         run: |
-            echo "Available artifacts:"
-            ls -lR artifacts
-            
-            mkdir -p merged_dist
-            VERSION=${GITHUB_REF_NAME#v}  # strips leading "v" from tag
+            mkdir -p merged_dist release_artifacts
+            VERSION=${GITHUB_REF_NAME#v}
 
-            echo "Current version: ${VERSION}"
-
-            # Recursively find all wheel and sdist files
-            find artifacts -type f \( -name "*.whl" -o -name "*.tar.gz" \) | while read file; do
+            # Copy canonical files for PyPI upload
+            find artifacts -type f \( -name "*.whl" -o -name "*.tar.gz" \) | while read -r file; do
                 base=$(basename "$file")
-                dir=$(basename $(dirname "$file"))  # get the parent directory (OS+Python info)
-                case "$base" in
-                    *"$VERSION"*)
-                        cp "$file" "merged_dist/${dir}-${base}"
-                        ;;
-                esac
+                if [[ "$base" == *"$VERSION"* ]]; then
+                    cp "$file" "merged_dist/$base"
+
+                    # Compute GitHub Release filename: insert matrix info before extension
+                    dir=$(dirname "$file")
+                    matrix_info=$(basename "$dir" | sed 's/dist-//')  # e.g. ubuntu-latest-py3.11
+                    ext="${base##*.}"                                # whl or tar.gz
+                    base_noext="${base%.*}"                          # remove last extension
+                    if [[ "$ext" == "gz" ]]; then
+                        # For tar.gz, remove both .tar.gz
+                        base_noext="${base%.tar.gz}"
+                        ext="tar.gz"
+                    fi
+                    cp "$file" "release_artifacts/${base_noext}-${matrix_info}.${ext}"
+                fi
             done
 
-            # Debug
-            echo "Merged artifacts:"
+            # Debug output
+            echo "PyPI artifacts:"
             ls -l merged_dist
+            echo "GitHub Release artifacts:"
+            ls -l release_artifacts
 
       - name: Generate temporary .pypirc from pyproject.toml
         run: |
@@ -295,7 +301,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           generate_release_notes: true
-          files: merged_dist/*
+          files: release_artifacts/*
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
         env:
