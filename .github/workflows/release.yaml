@@ -30,8 +30,6 @@ jobs:
     runs-on: self-hosted
     container:
       image: ubuntu:latest
-      #options: >-
-      #  --user ${{ github.run_id }}:${{ github.run_id }}
 
     strategy:
       matrix:
@@ -169,9 +167,6 @@ jobs:
         run: python -m build --sdist --wheel
         # Uses the updated pyproject.toml version
 
-      - name: Fix workspace permissions
-        run: sudo chown -R $(id -u):$(id -g) $GITHUB_WORKSPACE
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -195,27 +190,6 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO_OWNER: ${{ github.repository_owner }}
     steps:
-      #- uses: actions/checkout@v3
-
-      # - name: Set up Python
-      #   uses: actions/setup-python@v4
-      #   with:
-      #     python-version: "3.11"
-
-      # - name: Ensure pip cache directory exists
-      #   run: mkdir -p ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
-
-      # - name: Cache pip
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
-      #     key: publish-pip-${{ runner.os }}-${{ hashFiles('**/pyproject.toml') }}
-      #     restore-keys: |
-      #       publish-pip-${{ runner.os }}-
-
-      # - name: Install Twine and tomli
-      #   run: python -m pip install --upgrade pip twine tomli
-
       - name: Purge old merged artifacts
         run: rm -rf merged_dist artifacts
 
@@ -255,46 +229,6 @@ jobs:
             ls -l merged_dist
             echo "GitHub Release artifacts:"
             ls -l release_artifacts
-
-      # - name: Generate temporary .pypirc from pyproject.toml
-      #   run: |
-      #     python - <<'EOF'
-      #     import os, tomli
-
-      #     pyproject = tomli.load(open("pyproject.toml", "rb"))
-      #     twine_repos = pyproject.get("tool", {}).get("twine", {}).get("repositories", {})
-      #     if not twine_repos:
-      #         raise ValueError("No repositories defined in [tool.twine.repositories]")
-
-      #     owner = os.environ.get("REPO_OWNER", "")
-      #     lines = ["[distutils]", "index-servers = " + " ".join(twine_repos.keys())]
-
-      #     for name, repo in twine_repos.items():
-      #         url = repo.get("repository", "")
-      #         if "${OWNER}" in url:
-      #             url = url.replace("${OWNER}", owner)
-
-      #         username = repo.get("username", "")
-      #         password = repo.get("password", "")
-
-      #         if password.startswith("{env:") and password.endswith("}"):
-      #             env_var = password[5:-1]
-      #             password = os.environ.get(env_var, "")
-      #             print(f"🔑 Loaded password from env var: {env_var} → {'✅ FOUND' if password else '❌ MISSING'}")
-
-      #         # ⚠️ Here we write the REAL password (not masked)
-      #         lines.extend([
-      #             f"\n[{name}]",
-      #             f"repository: {url}",
-      #             f"username: {username if name != 'pypi' else '__token__'}",
-      #             f"password: {password}"
-      #         ])
-
-      #     with open(os.path.expanduser("~/.pypirc"), "w") as f:
-      #         f.write("\n".join(lines))
-
-      #     print("✅ .pypirc generated successfully (password written, not masked)")
-      #     EOF
 
       # Use Trusted Publisher instead of PyPI API token
       - name: Publish to PyPI
