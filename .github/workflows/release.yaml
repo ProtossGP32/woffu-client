@@ -30,6 +30,9 @@ jobs:
     runs-on: self-hosted
     container:
       image: ubuntu:latest
+      options: >-
+        --user ${{ github.run_id }}:${{ github.run_id }}
+
     strategy:
       matrix:
         # macOS and Windows disabled to save free GitHub Actions minutes.
@@ -75,6 +78,8 @@ jobs:
     runs-on: self-hosted
     container:
       image: ubuntu:latest
+      options: >-
+        --user ${{ github.run_id }}:${{ github.run_id }}
     if: startsWith(github.ref, 'refs/tags/')
     outputs:
       version: ${{ steps.get_version.outputs.version }}
