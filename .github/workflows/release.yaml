@@ -188,6 +188,9 @@ jobs:
       REPO_OWNER: ${{ github.repository_owner }}
     steps:
       - uses: actions/checkout@v3
+        # Only define this if job is running on a self-hosted runner
+        with:
+          path: self-host_publish
 
       # - name: Set up Python
       #   uses: actions/setup-python@v4
