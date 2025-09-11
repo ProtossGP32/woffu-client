@@ -182,8 +182,6 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
     env:
-      # For PyPI auth
-      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
       # For GitHub Packages auth
       GITHUB_ACTOR: ${{ github.actor }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -290,6 +288,7 @@ jobs:
           print("✅ .pypirc generated successfully (password written, not masked)")
           EOF
 
+      # Use Trusted Publisher instead of PyPI API token
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
