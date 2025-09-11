@@ -236,6 +236,7 @@ jobs:
         with:
           packages-dir: merged_dist
           print-hash: true   # optional: logs sha256 of artifacts
+          use-docker: false
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
