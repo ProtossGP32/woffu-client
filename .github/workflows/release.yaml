@@ -177,13 +177,13 @@ jobs:
     name: Publish Package
     #runs-on: ubuntu-latest
     runs-on: self-hosted
-    container:
-      image: ubuntu:latest
+    #container:
+    #  image: ubuntu:latest
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
     env:
       # For GitHub Packages auth
-      GITHUB_ACTOR: ${{ github.actor }}
+      #GITHUB_ACTOR: ${{ github.actor }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO_OWNER: ${{ github.repository_owner }}
     steps:
