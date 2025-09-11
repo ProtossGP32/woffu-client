@@ -290,11 +290,11 @@ jobs:
           print("✅ .pypirc generated successfully (password written, not masked)")
           EOF
 
-      - name: Publish canonical artifacts to PyPI
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          python -m twine upload merged_dist/*"$VERSION"*.whl merged_dist/*"$VERSION"*.tar.gz \
-            --config-file ~/.pypirc
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: merged_dist
+          print-hash: true   # optional: logs sha256 of artifacts
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
