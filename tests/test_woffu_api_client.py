@@ -524,53 +524,70 @@ class TestWoffuAPIClientExtra(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.client._save_credentials()
 
-    # @patch.object(WoffuAPIClient, "get")
-    # def test_download_document_creates_directory_if_missing(self, mock_get):
-    #     """download_document creates missing directory automatically"""
-    #     fake_document = {"Name": "file.pdf", "DocumentId": "ID"}
-    #     output_dir = self.tmp_dir / "new_downloads"
-    #     mock_response = MagicMock(status=200)
-    #     mock_response.content = b"DATA"
-    #     mock_get.return_value = mock_response
+    @patch.object(WoffuAPIClient, "get")
+    def test_download_document_creates_directory_if_missing(self, mock_get):
+        """download_document creates missing directory automatically"""
+        fake_document = {"Name": "file.pdf", "DocumentId": "ID"}
+        output_dir = self.tmp_dir / "new_downloads"
+        
+        mock_response = MagicMock(status=200)
+        mock_response.content = b"DATA"
+        mock_get.return_value = mock_response
 
-    #     self.client.download_document(fake_document, str(output_dir))
-    #     file_path = output_dir / "file.pdf"
-    #     self.assertTrue(file_path.exists())
-    #     self.assertEqual(file_path.read_bytes(), b"DATA")
+        # Make sure output_dir does not exist
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
 
-    # @patch.object(WoffuAPIClient, "get")
-    # def test_download_document_raises_exception_skips_file(self, mock_get):
-    #     """download_document handles exception and does not create file"""
-    #     fake_document = {"Name": "fail.pdf", "DocumentId": "ID"}
-    #     output_dir = self.tmp_dir / "downloads"
-    #     output_dir.mkdir(exist_ok=True)
-    #     mock_get.side_effect = Exception("Network error")
+        self.client.download_document(fake_document, str(output_dir))
 
-    #     self.client.download_document(fake_document, str(output_dir))
-    #     self.assertFalse((output_dir / "fail.pdf").exists())
+        file_path = output_dir / "file.pdf"
+        self.assertTrue(file_path.exists())
+        self.assertEqual(file_path.read_bytes(), b"DATA")
 
-    # @patch.object(WoffuAPIClient, "get_documents")
-    # @patch.object(WoffuAPIClient, "download_document")
-    # def test_download_all_documents_partial_failures(self, mock_download, mock_get_docs):
-    #     """download_all_documents continues even if some downloads fail"""
-    #     mock_get_docs.return_value = [{"Name": "a.pdf", "DocumentId": "1"},
-    #                                   {"Name": "b.pdf", "DocumentId": "2"}]
+    @patch.object(WoffuAPIClient, "get")
+    def test_download_document_raises_exception_skips_file(self, mock_get):
+        """download_document handles exception and does not create file"""
+        fake_document = {"Name": "fail.pdf", "DocumentId": "ID"}
+        output_dir = self.tmp_dir / "downloads"
+        output_dir.mkdir(exist_ok=True)
 
-    #     def fail_on_second(doc, output_dir):
-    #         if doc["Name"] == "b.pdf":
-    #             raise Exception("Download failed")
+        mock_get.side_effect = Exception("Network error")
 
-    #     mock_download.side_effect = fail_on_second
-    #     self.client.download_all_documents()
-    #     self.assertEqual(mock_download.call_count, 2)
+        self.client.download_document(fake_document, str(output_dir))
 
-    # @patch.object(WoffuAPIClient, "get")
-    # def test_get_diary_hour_types_unexpected_type_returns_empty(self, mock_get):
-    #     """_get_diary_hour_types returns empty if response is not list/dict"""
-    #     mock_get.return_value.status = 200
-    #     mock_get.return_value.json.return_value = None
-    #     result = self.client._get_diary_hour_types("2025-09-12")
-    #     self.assertEqual(result, {})
+        # File should not exist because download failed
+        self.assertFalse((output_dir / "fail.pdf").exists())
+
+    @patch.object(WoffuAPIClient, "get_documents")
+    @patch.object(WoffuAPIClient, "download_document")
+    def test_download_all_documents_partial_failures(self, mock_download, mock_get_docs):
+        """download_all_documents continues even if some downloads fail"""
+        mock_get_docs.return_value = [
+            {"Name": "a.pdf", "DocumentId": "1"},
+            {"Name": "b.pdf", "DocumentId": "2"}
+        ]
+
+        def fail_on_second(*args, **kwargs):
+            doc = kwargs.get("document") or (args[0] if args else None)
+            if doc and doc["Name"] == "b.pdf":
+                raise Exception("Download failed")
+
+        mock_download.side_effect = fail_on_second
+
+        # Ensure partial failures don't stop the loop
+        self.client.download_all_documents()
+        self.assertEqual(mock_download.call_count, 2)
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_diary_hour_types_unexpected_type_returns_empty(self, mock_get):
+        """_get_diary_hour_types returns empty if response is None, string, or list"""
+        # Mock responses
+        for bad_response in [None, "unexpected", ["not", "a", "dict"]]:
+            mock_get.return_value.status = 200
+            mock_get.return_value.json.return_value = bad_response
+
+            result = self.client._get_diary_hour_types("2025-09-12")
+            self.assertEqual(result, {})
 
     # @patch.object(WoffuAPIClient, "_get_presence")
     # @patch.object(WoffuAPIClient, "_get_workday_slots")
@@ -578,10 +595,13 @@ class TestWoffuAPIClientExtra(unittest.TestCase):
     #     """get_summary_report skips slots with invalid in/out times"""
     #     diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": []}
     #     mock_presence.return_value = [diary]
-    #     mock_slots.return_value = [{"in": {"trueDate": "INVALID", "utcTime": "INVALID"},
-    #                                 "out": {"trueDate": "INVALID", "utcTime": "INVALID"}}]
+    #     mock_slots.return_value = [
+    #         {"in": {"trueDate": "INVALID", "utcTime": "INVALID"},
+    #         "out": {"trueDate": "INVALID", "utcTime": "INVALID"}}
+    #     ]
 
     #     result = self.client.get_summary_report("2025-09-12", "2025-09-12")
+    #     # Work hours should be 0 because in/out parsing failed
     #     self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 0)
 
     # @patch.object(WoffuAPIClient, "get")

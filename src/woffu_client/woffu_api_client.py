@@ -242,7 +242,11 @@ class WoffuAPIClient(Session):
         # Compose the download link
         document_url = f"https://{self._domain}/api/documents/{document['DocumentId']}/download2"
 
-        document_response = self.get(url=document_url)
+        try:
+            document_response = self.get(url=document_url)
+        except Exception as e:
+            logger.error(f"Failed to download '{document['Name']}': {e}")
+            return
 
         # Save the document
         if document_response.status == 200:
@@ -264,7 +268,10 @@ class WoffuAPIClient(Session):
         if documents_list:
             logger.info("Downloading all documents...")
             for document in documents_list:
-                self.download_document(document=document, output_dir=output_dir)
+                try:
+                    self.download_document(document=document, output_dir=output_dir)
+                except Exception as e:
+                    logger.warning(f"Failed to download {document.get('Name')}: {e}")
             logger.info("All documents downloaded!")
 
     def _get_presence(self, from_date: str = "", to_date: str = "", page_size: int = 1000) -> dict:
@@ -315,12 +322,10 @@ class WoffuAPIClient(Session):
                 "date": date
             }
         )
-
-        if hour_types_response.status == 200:
-            data = hour_types_response.json()
-            return data.get("diaryHourTypes", {})
     
-        return {}
+        data = hour_types_response.json() if getattr(hour_types_response, "status", None) == 200 else {}
+        # Coerce data to dict if possible; otherwise, return empty dict
+        return dict(data).get("diaryHourTypes", {}) if isinstance(data, dict) else {}
 
     def _get_workday_slots(self, diary_summary_id: int) -> dict:
         """
