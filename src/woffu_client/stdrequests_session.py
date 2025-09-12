@@ -35,12 +35,13 @@ class HTTPResponse:
                     encoding = enc
             except Exception:
                 pass
-        return self.content().decode(encoding, errors="replace")
+        return self.content.decode(encoding, errors="replace")
 
     def json(self) -> Any:
         """Parse response body as JSON."""
         return jsonlib.loads(self.text())
 
+    @property
     def content(self) -> bytes:
         """Return the entire response body as bytes."""
         if self._cached_content is None:
@@ -57,7 +58,7 @@ class HTTPResponse:
             return
         
         if not self._stream:
-            yield self.content()
+            yield self.content
             return
 
         if chunk_size is None:
@@ -143,7 +144,7 @@ class Session:
         url: str,
         params: Optional[Dict[str, str]] = None,
         data: Optional[Union[dict, str, bytes]] = None,
-        json: Optional[Any] = None,  # <-- added json parameter
+        json: Optional[Any] = None,
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[int] = None,
         retries: Optional[int] = None,

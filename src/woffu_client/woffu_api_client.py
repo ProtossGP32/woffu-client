@@ -2,7 +2,7 @@ from operator import itemgetter
 import sys
 import json
 import logging
-from .stdrequests_session import Session
+from .stdrequests_session import Session, HTTPResponse
 from pathlib import Path
 from getpass import getpass
 from datetime import datetime, timedelta
@@ -72,21 +72,34 @@ class WoffuAPIClient(Session):
             return
         
         logger.info("Requesting access token...")
-        token_response = self.post(
-            url=f"{self._woffu_api_url}/token",
-            data = {
-                "grant_type": "password",
-                "username": username,
-                "password": password
-            }
-        )
+        try:
+            token_response = self.post(
+                url=f"{self._woffu_api_url}/token",
+                data = {
+                    "grant_type": "password",
+                    "username": username,
+                    "password": password
+                }
+            )
+            # self._token = ""
+            # if token_response.status == 200:
+            #     try:
+            #         json_data = token_response.json()
+            #         self._token = json_data.get('access_token', "")
+            #     except ValueError:
+            #         logger.error("Invalid JSON received when retrieving access token.")
+            #         self._token = ""        
+            # else:
+            #     logger.error("Failed to retrieve access token")
+            if token_response.status != 200:
+                self._token = ""
+                logger.error(f"Failed to retrieve access token, status={token_response.status}")
+                return
+            self._token = token_response.json().get("access_token", "")
 
-        if token_response.status == 200:
-            self._token = token_response.json()['access_token']
-        else:
-            logger.error(f"Can't retrieve access token. Please review username and password and try again. Error code: {token_response.status}")
+        except Exception as e:
             self._token = ""
-        
+            logger.error(f"Exception retrieving token: {e}")
 
     def _save_credentials(self):
         """
@@ -147,7 +160,7 @@ class WoffuAPIClient(Session):
             self._config_file = Path(creds_file)
         
         if not self._config_file.exists():
-            logger.error(f"Config file '{self._config_file}' doesn't exist! Requesting authentication token...")
+            logger.warning(f"Config file '{self._config_file}' doesn't exist! Requesting authentication token...")
             self._request_credentials()
             self._save_credentials()
             
@@ -239,14 +252,20 @@ class WoffuAPIClient(Session):
         # Compose the download link
         document_url = f"https://{self._domain}/api/documents/{document['DocumentId']}/download2"
 
-        document_response = self.get(url=document_url)
+        try:
+            document_response = self.get(url=document_url)
+        except Exception as e:
+            logger.error(f"Failed to download '{document['Name']}': {e}")
+            return
 
         # Save the document
         if document_response.status == 200:
             logger.info(f"Saving '{document['Name']}'...")
             #with open(file=document_path, mode='bw') as f:
-            #    f.write(document_response.content())
-            document_path.write_bytes(document_response.content())
+            #    f.write(document_response.content)
+            document_path.write_bytes(document_response.content)
+        else:
+            logger.error(f"Failed to download '{document['Name']}'")
 
     def download_all_documents(self, output_dir: str = "") -> None:
         """
@@ -259,7 +278,10 @@ class WoffuAPIClient(Session):
         if documents_list:
             logger.info("Downloading all documents...")
             for document in documents_list:
-                self.download_document(document=document, output_dir=output_dir)
+                try:
+                    self.download_document(document=document, output_dir=output_dir)
+                except Exception as e:
+                    logger.warning(f"Failed to download {document.get('Name')}: {e}")
             logger.info("All documents downloaded!")
 
     def _get_presence(self, from_date: str = "", to_date: str = "", page_size: int = 1000) -> dict:
@@ -292,11 +314,10 @@ class WoffuAPIClient(Session):
         )
 
         if hours_response.status == 200:
-            return hours_response.json()['diaries']
+            return hours_response.json().get('diaries', {})
     
-        else:
-            logger.error(f"Can't retrieve presence for the time period {from_date} - {to_date}!")
-            return {}
+        logger.error(f"Can't retrieve presence for the time period {from_date} - {to_date}!")
+        return {}
 
 
     def _get_diary_hour_types(self, date: str) -> dict:
@@ -311,14 +332,10 @@ class WoffuAPIClient(Session):
                 "date": date
             }
         )
-
-        if hour_types_response.status == 200:
-            return hour_types_response.json()['diaryHourTypes']
     
-        else:
-            logger.error(f"Can't retrieve hour types for date {date}!")
-            return {}
-    
+        data = hour_types_response.json() if getattr(hour_types_response, "status", None) == 200 else {}
+        # Coerce data to dict if possible; otherwise, return empty dict
+        return dict(data).get("diaryHourTypes", {}) if isinstance(data, dict) else {}
 
     def _get_workday_slots(self, diary_summary_id: int) -> dict:
         """
@@ -332,14 +349,13 @@ class WoffuAPIClient(Session):
         )
 
         if workday_slots_response.status == 200:
-            return workday_slots_response.json()['slots']
+            return workday_slots_response.json().get('slots', {})
     
-        else:
-            logger.error(f"Can't retrieve workday slots for diary entry {diary_summary_id}!")
-            return {}
+        logger.error(f"Can't retrieve workday slots for diary entry {diary_summary_id}!")
+        return {}
 
 
-    def get_sign_requests(self, date: str):
+    def get_sign_requests(self, date: str) -> dict | list:
         """
         Return the user requests for a given date, such as Holidays
         params:
@@ -355,11 +371,13 @@ class WoffuAPIClient(Session):
         )
 
         if sign_motives_response.status == 200:
-            return sign_motives_response.json()
-    
-        else:
-            logger.error(f"Can't retrieve sign motives for date {date}!")
+            data = sign_motives_response.json()
+            if isinstance(data, (dict, list)):
+                return data
             return {}
+    
+        logger.error(f"Can't retrieve sign motives for date {date}!")
+        return {}
         
 
     def get_status(self, only_running_clock: bool = False) -> tuple[timedelta, bool]:
@@ -384,10 +402,20 @@ class WoffuAPIClient(Session):
         current_time = datetime.now(tz=self._localzone)
 
         for sign in signs_in_day:
-            running_clock = sign['SignIn']
-            sign_date = sign['TrueDate']
-            # Split UtcTime and keep only the offset
-            utc_offset = f"{sign['UtcTime'].split(' ')[1].zfill(3)}00"
+            # running_clock = sign['SignIn']
+            # sign_date = sign['TrueDate']
+            # # Split UtcTime and keep only the offset
+            # utc_offset = f"{sign['UtcTime'].split(' ')[1].zfill(3)}00"
+            
+            running_clock = sign.get('SignIn', False)
+            sign_date = sign.get('TrueDate', None)
+            utc_time = sign.get('UtcTime', '')
+            try:
+                # Split UtcTime and keep only the offset (format '+HHMM')
+                utc_offset = f"{utc_time.split(' ')[1].zfill(3)}00"
+            except (IndexError, AttributeError):
+                utc_offset = "+0000"  # fallback to UTC
+            
             # WORKAROUND: Woffu stores incorrect UTC information when signing in from the Webapp, showing same local date on 'TrueDate' and 'UtcTime' but with no UTC offset (+0)
             # - In the time being, we'll be using our local timezone for any sign that comes with +0 in the UtcTime as we suspect Woffu DB is running on a server with the same local timezone as us
             if utc_offset == "+0000":
@@ -417,7 +445,7 @@ class WoffuAPIClient(Session):
         logger.info(f"You're currently signed {'in' if running_clock else 'out'}.")
         return total_time, running_clock
 
-    def sign(self, type: str = "", motive: str = ""):
+    def sign(self, type: str = "", motive: str = "") -> HTTPResponse | None:
         """
         Sign in/out on Woffu
         params:
@@ -496,7 +524,7 @@ class WoffuAPIClient(Session):
         return hour_types_summary
     
 
-    def get_summary_report(self, from_date:str = "", to_date:str = "") -> dict:
+    def get_summary_report(self, from_date: str = "", to_date: str = "") -> dict:
         """
         Generate a summary report based on the information provided by the Presence endpoint.
         """
@@ -521,25 +549,37 @@ class WoffuAPIClient(Session):
                 if slot and 'motive' in slot and slot['motive']:
                     total_time += slot['motive']['hours']
                 else:
-                    logger.info(f"Slot of date {diary['date']} doesn't have motive. Using `in` and `out` keys instead...")
-                    # Compute the difference between the sign in and sign out times
-                    in_date = slot['in']['trueDate']
-                    in_utc_offset = f"{slot['in']['utcTime'].split(' ')[1].zfill(3)}00"
-                    if in_utc_offset == "+0000":
-                        in_utc_offset = current_time.strftime("%z")
+                    logger.info(
+                        f"Slot of date {diary['date']} doesn't have motive. Using `in` and `out` keys instead..."
+                    )
+                    try:
+                        in_date = slot['in']['trueDate']
+                        out_date = slot['out']['trueDate']
 
-                    out_date = slot['out']['trueDate']
-                    out_utc_offset = f"{slot['out']['utcTime'].split(' ')[1].zfill(3)}00"
-                    if out_utc_offset == "+0000":
-                        out_utc_offset = current_time.strftime("%z")
+                        # Parse UTC offsets safely
+                        in_utc_parts = slot['in']['utcTime'].split(' ')
+                        out_utc_parts = slot['out']['utcTime'].split(' ')
+
+                        if len(in_utc_parts) < 2 or len(out_utc_parts) < 2:
+                            logger.warning(
+                                f"Skipping slot with invalid UTC times: in='{slot['in']['utcTime']}', out='{slot['out']['utcTime']}'"
+                            )
+                            continue
+
+                        in_utc_offset = f"{in_utc_parts[1].zfill(3)}00"
+                        out_utc_offset = f"{out_utc_parts[1].zfill(3)}00"
                                            
-                    in_date_timezoned = f"{in_date}{in_utc_offset}"
-                    out_date_timezoned = f"{out_date}{out_utc_offset}"
+                        in_date_timezoned = f"{in_date}{in_utc_offset}"
+                        out_date_timezoned = f"{out_date}{out_utc_offset}"
 
-                    in_dt = datetime.strptime(in_date_timezoned, f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z")
-                    out_dt = datetime.strptime(out_date_timezoned, f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z")
-            
-                    total_time += (out_dt - in_dt).total_seconds() / 3600
+                        in_dt = datetime.strptime(in_date_timezoned, f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z")
+                        out_dt = datetime.strptime(out_date_timezoned, f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z")
+                
+                        total_time += (out_dt - in_dt).total_seconds() / 3600
+                    
+                    except Exception as e:
+                        logger.warning(f"Skipping slot due to parsing error: {e}")
+                        continue
 
             event_report['work_hours'] = total_time
 
@@ -557,12 +597,16 @@ class WoffuAPIClient(Session):
             # Retrieve the other hour types
             if 'diaryHourTypes' in diary and diary['diaryHourTypes']:
                 for hour_type in diary['diaryHourTypes']:
-                    hour_type_id = hour_type['hourTypeId']
+                    hour_type_id = hour_type.get('hourTypeId', None)
+                    if hour_type_id is None:
+                        logger.warning(f"Skipping hour type with missing 'hourTypeId' in diary for date {diary['date']}")
+                        continue
+
                     hour_type_name = self.hour_types_dict[hour_type_id] if hour_type_id in self.hour_types_dict else hour_type_id
                     if hour_type_name not in event_report:
-                        event_report[hour_type_name] = hour_type['hours']
+                        event_report[hour_type_name] = hour_type.get('hours', 0)
                     else:
-                        event_report[hour_type_name] += hour_type['hours']
+                        event_report[hour_type_name] += hour_type.get('hours', 0)
 
         return summary_report
     
@@ -608,7 +652,7 @@ class WoffuAPIClient(Session):
 
         with open(csv_filename, 'w', newline=os.linesep) as csvfile:
             # Prepare the CSV writer
-            writer = csv.DictWriter(csvfile, fieldnames=sorted(reports_header), delimiter=delimiter, quoting=csv.QUOTE_STRINGS)
+            writer = csv.DictWriter(csvfile, fieldnames=sorted(reports_header), delimiter=delimiter, quoting=csv.QUOTE_MINIMAL)
             writer.writeheader()
 
             # Write rows
