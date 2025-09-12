@@ -35,12 +35,13 @@ class HTTPResponse:
                     encoding = enc
             except Exception:
                 pass
-        return self.content().decode(encoding, errors="replace")
+        return self.content.decode(encoding, errors="replace")
 
     def json(self) -> Any:
         """Parse response body as JSON."""
         return jsonlib.loads(self.text())
 
+    @property
     def content(self) -> bytes:
         """Return the entire response body as bytes."""
         if self._cached_content is None:
@@ -51,13 +52,14 @@ class HTTPResponse:
                 self._cached_content = self._raw.read()
         return cast(bytes, self._cached_content)
 
+
     def iter_content(self, chunk_size: Optional[int] = 1024) -> Iterator[bytes]:
         if self._raw is None:
             yield b""
             return
         
         if not self._stream:
-            yield self.content()
+            yield self.content
             return
 
         if chunk_size is None:

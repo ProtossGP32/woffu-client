@@ -86,7 +86,7 @@ class TestHTTPResponse(TestCase):
         content = b"abcdefg"
         raw = DummyRawResponse(content=content)
         resp = HTTPResponse(raw, 200, {}, stream=False)
-        self.assertEqual(resp.content(), content)
+        self.assertEqual(resp.content, content)
         chunks = list(resp.iter_content(chunk_size=3))
         self.assertEqual(b"".join(chunks), content)
 
@@ -166,7 +166,7 @@ class TestHTTPResponse(TestCase):
         # _raw is None
         resp2 = HTTPResponse(None, 200, {}, stream=True)
         chunks2 = list(resp2.iter_content())
-        assert chunks2 == [resp2.content()]
+        assert chunks2 == [resp2.content]
 
         # chunk_size <=0 yields b""
         resp3 = HTTPResponse(DummyRawResponse(), 200, {}, stream=True)
@@ -267,7 +267,7 @@ class TestSession(TestCase):
 
         resp = self.session.get("http://example.com")
         self.assertEqual(resp.status, 200)
-        self.assertEqual(resp.content(), dummy_content)
+        self.assertEqual(resp.content, dummy_content)
         self.assertEqual(resp.headers, dummy_headers)
         assert self.opener.called_with is not None
         self.assertEqual(self.opener.called_with.get_full_url(), "http://example.com")
@@ -290,7 +290,7 @@ class TestSession(TestCase):
         self.opener.open = raise_http_error
         resp = self.session.get("http://example.com/error")
         self.assertEqual(resp.status, 404)
-        self.assertEqual(resp.content(), b"error content")
+        self.assertEqual(resp.content, b"error content")
         self.assertEqual(resp.headers.get("Content-Type"), "text/plain")
 
     def test_http_error_without_fp(self) -> None:
@@ -348,7 +348,7 @@ class TestSession(TestCase):
         self.opener._response = dummy_response
         resp = self.session.get("http://timeout.com", timeout=10)
         self.assertEqual(resp.status, 200)
-        self.assertEqual(resp.content(), dummy_content)
+        self.assertEqual(resp.content, dummy_content)
 
     def test_request_with_unusual_headers(self) -> None:
         headers = {"X-Custom": "abc", "Content-Length": "10"}
@@ -360,7 +360,7 @@ class TestSession(TestCase):
     def test_request_streaming_false_and_true(self) -> None:
         self.opener._response = DummyRawResponse(status=200, content=b"streamtest")
         resp = self.session.get("http://example.com", stream=False)
-        self.assertEqual(resp.content(), b"streamtest")
+        self.assertEqual(resp.content, b"streamtest")
 
         self.opener._response = DummyRawResponse(status=200, content=b"streamtest")
         resp = self.session.get("http://example.com", stream=True)
@@ -371,7 +371,7 @@ class TestSession(TestCase):
         # Assuming Session supports string data and encodes it internally
         resp = self.session.post("http://example.com", data="string data")
         self.assertEqual(resp.status, 200)
-        self.assertEqual(resp.content(), b"ok")
+        self.assertEqual(resp.content, b"ok")
 
         # Check that opener was called with a Request object containing the data
         called_req = self.opener.called_with
@@ -414,7 +414,7 @@ class TestSession(TestCase):
         self.opener._response = DummyRawResponse(status=200, content=b"ok")
         resp = self.session.get("http://example.com", headers={})
         self.assertEqual(resp.status, 200)
-        self.assertEqual(resp.content(), b"ok")
+        self.assertEqual(resp.content, b"ok")
 
     def test_request_with_multiple_headers(self) -> None:
         # Python dict can't have duplicate keys; so simulate with multiple calls or with special header format
@@ -535,13 +535,13 @@ class TestSession(TestCase):
         self.opener._response = dummy_response
         resp = self.session.request("GET", "http://example.com", timeout=7)
         self.assertEqual(resp.status, 200)
-        self.assertEqual(resp.content(), b"ok")
+        self.assertEqual(resp.content, b"ok")
 
     def test_request_with_headers_none(self) -> None:
         self.opener._response = DummyRawResponse(status=200, content=b"ok")
         resp = self.session.request("GET", "http://example.com", headers=None)
         self.assertEqual(resp.status, 200)
-        self.assertEqual(resp.content(), b"ok")
+        self.assertEqual(resp.content, b"ok")
 
     def test_request_with_params(self) -> None:
         called_urls: List[str] = []
