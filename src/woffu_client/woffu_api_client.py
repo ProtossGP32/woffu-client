@@ -2,7 +2,7 @@ from operator import itemgetter
 import sys
 import json
 import logging
-from .stdrequests_session import Session
+from .stdrequests_session import Session, HTTPResponse
 from pathlib import Path
 from getpass import getpass
 from datetime import datetime, timedelta
@@ -292,11 +292,10 @@ class WoffuAPIClient(Session):
         )
 
         if hours_response.status == 200:
-            return hours_response.json()['diaries']
+            return hours_response.json().get('diaries', {})
     
-        else:
-            logger.error(f"Can't retrieve presence for the time period {from_date} - {to_date}!")
-            return {}
+        logger.error(f"Can't retrieve presence for the time period {from_date} - {to_date}!")
+        return {}
 
 
     def _get_diary_hour_types(self, date: str) -> dict:
@@ -313,12 +312,10 @@ class WoffuAPIClient(Session):
         )
 
         if hour_types_response.status == 200:
-            return hour_types_response.json()['diaryHourTypes']
+            data = hour_types_response.json()
+            return data.get("diaryHourTypes", {})
     
-        else:
-            logger.error(f"Can't retrieve hour types for date {date}!")
-            return {}
-    
+        return {}
 
     def _get_workday_slots(self, diary_summary_id: int) -> dict:
         """
@@ -332,14 +329,13 @@ class WoffuAPIClient(Session):
         )
 
         if workday_slots_response.status == 200:
-            return workday_slots_response.json()['slots']
+            return workday_slots_response.json().get('slots', {})
     
-        else:
-            logger.error(f"Can't retrieve workday slots for diary entry {diary_summary_id}!")
-            return {}
+        logger.error(f"Can't retrieve workday slots for diary entry {diary_summary_id}!")
+        return {}
 
 
-    def get_sign_requests(self, date: str):
+    def get_sign_requests(self, date: str) -> dict | list:
         """
         Return the user requests for a given date, such as Holidays
         params:
@@ -355,11 +351,13 @@ class WoffuAPIClient(Session):
         )
 
         if sign_motives_response.status == 200:
-            return sign_motives_response.json()
-    
-        else:
-            logger.error(f"Can't retrieve sign motives for date {date}!")
+            data = sign_motives_response.json()
+            if isinstance(data, (dict, list)):
+                return data
             return {}
+    
+        logger.error(f"Can't retrieve sign motives for date {date}!")
+        return {}
         
 
     def get_status(self, only_running_clock: bool = False) -> tuple[timedelta, bool]:
@@ -384,10 +382,20 @@ class WoffuAPIClient(Session):
         current_time = datetime.now(tz=self._localzone)
 
         for sign in signs_in_day:
-            running_clock = sign['SignIn']
-            sign_date = sign['TrueDate']
-            # Split UtcTime and keep only the offset
-            utc_offset = f"{sign['UtcTime'].split(' ')[1].zfill(3)}00"
+            # running_clock = sign['SignIn']
+            # sign_date = sign['TrueDate']
+            # # Split UtcTime and keep only the offset
+            # utc_offset = f"{sign['UtcTime'].split(' ')[1].zfill(3)}00"
+            
+            running_clock = sign.get('SignIn', False)
+            sign_date = sign.get('TrueDate', None)
+            utc_time = sign.get('UtcTime', '')
+            try:
+                # Split UtcTime and keep only the offset (format '+HHMM')
+                utc_offset = f"{utc_time.split(' ')[1].zfill(3)}00"
+            except (IndexError, AttributeError):
+                utc_offset = "+0000"  # fallback to UTC
+            
             # WORKAROUND: Woffu stores incorrect UTC information when signing in from the Webapp, showing same local date on 'TrueDate' and 'UtcTime' but with no UTC offset (+0)
             # - In the time being, we'll be using our local timezone for any sign that comes with +0 in the UtcTime as we suspect Woffu DB is running on a server with the same local timezone as us
             if utc_offset == "+0000":
@@ -417,7 +425,7 @@ class WoffuAPIClient(Session):
         logger.info(f"You're currently signed {'in' if running_clock else 'out'}.")
         return total_time, running_clock
 
-    def sign(self, type: str = "", motive: str = ""):
+    def sign(self, type: str = "", motive: str = "") -> HTTPResponse | None:
         """
         Sign in/out on Woffu
         params:

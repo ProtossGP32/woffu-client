@@ -199,3 +199,69 @@ class TestWoffuAPIClientExtra(unittest.TestCase):
         docs = self.client.get_documents()
         self.assertEqual(len(docs), 1)
         self.assertEqual(docs[0]["Name"], "doc1.pdf")
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_only_running_clock(self, mock_get):
+        """Test get_status with only_running_clock=True returns correct last sign."""
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = [
+            {"SignIn": True, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "12:00:00 +01"},
+            {"SignIn": False, "TrueDate": "2025-09-12T16:00:00.000", "UtcTime": "16:00:00 +01"}
+        ]
+
+        total, running = self.client.get_status(only_running_clock=True)
+        self.assertIsInstance(total, object)
+        self.assertFalse(running)  # Last sign False
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_empty_signs(self, mock_get):
+        """Test get_status when no signs exist."""
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = []
+
+        total, running = self.client.get_status()
+        self.assertEqual(total.total_seconds(), 0)
+        self.assertFalse(running)
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_utc_offset_edge_case(self, mock_get):
+        """Test get_status handles invalid UtcTime formats gracefully."""
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = [
+            {"SignIn": True, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "INVALID"}
+        ]
+
+        total, running = self.client.get_status()
+        self.assertIsInstance(total, object)
+        self.assertTrue(running)
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_diary_hour_types_empty_response(self, mock_get):
+        """Test _get_diary_hour_types handles empty response."""
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = {"diaryHourTypes": []}
+
+        result = self.client._get_diary_hour_types("2025-09-12")
+        self.assertEqual(result, [])
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_diary_hour_types_missing_key(self, mock_get):
+        """Test _get_diary_hour_types when 'diaryHourTypes' key missing."""
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = {}
+
+        result = self.client._get_diary_hour_types("2025-09-12")
+        self.assertEqual(result, {})
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_download_document_file_exists(self, mock_get):
+        """Test download_document skips download if file already exists."""
+        output_dir = self.tmp_dir / "downloads"
+        output_dir.mkdir(exist_ok=True)
+        file_path = output_dir / "existing.pdf"
+        file_path.write_bytes(b"EXISTING")
+
+        fake_document = {"Name": "existing.pdf", "DocumentId": "DOC_ID"}
+
+        self.client.download_document(fake_document, str(output_dir))
+        self.assertEqual(file_path.read_bytes(), b"EXISTING")  # Not overwritten
