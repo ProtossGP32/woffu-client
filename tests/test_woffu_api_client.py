@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from src.woffu_client.woffu_api_client import WoffuAPIClient
+import os
 
 
 class TestWoffuAPIClient(unittest.TestCase):
@@ -265,3 +266,135 @@ class TestWoffuAPIClientExtra(unittest.TestCase):
 
         self.client.download_document(fake_document, str(output_dir))
         self.assertEqual(file_path.read_bytes(), b"EXISTING")  # Not overwritten
+
+    # ---------------------------
+    # Authentication & Credential
+    # ---------------------------
+    @patch.object(WoffuAPIClient, "post")
+    def test_retrieve_access_token_no_credentials_sets_empty_token(self, mock_post):
+        """_retrieve_access_token returns early if username/password missing"""
+        self.client._token = "OLD"
+        self.client._retrieve_access_token(username="", password="")
+        self.assertEqual(self.client._token, "OLD")
+
+    @patch.object(WoffuAPIClient, "post")
+    def test_retrieve_access_token_invalid_credentials_sets_empty_token(self, mock_post):
+        """_retrieve_access_token sets empty token if HTTP status != 200"""
+        mock_response = MagicMock(status=401, json=lambda: {})
+        mock_post.return_value = mock_response
+        self.client._retrieve_access_token(username="u", password="p")
+        self.assertEqual(self.client._token, "")
+
+    def test_request_credentials_non_interactive_no_env_exits(self):
+        """_request_credentials exits when non-interactive and no env vars"""
+        self.client._interactive = False
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(SystemExit):
+                self.client._request_credentials()
+
+    def test_load_credentials_missing_file_requests_and_saves(self):
+        """_load_credentials triggers _request_credentials and _save_credentials if config missing"""
+        self.client._config_file = Path("non_existing.json")
+        with patch.object(self.client, "_request_credentials") as mock_req, \
+            patch.object(self.client, "_save_credentials") as mock_save:
+            self.client._load_credentials()
+            mock_req.assert_called_once()
+            mock_save.assert_called_once()
+
+    # -------------------------------
+    # Document Download & Filesystems
+    # -------------------------------
+    @patch.object(WoffuAPIClient, "get")
+    def test_download_document_http_fail_does_not_write_file(self, mock_get):
+        """download_document does not write file if HTTP status != 200"""
+        output_dir = self.tmp_dir / "downloads"
+        output_dir.mkdir(exist_ok=True)
+        fake_document = {"Name": "fail.pdf", "DocumentId": "DOC_ID"}
+        mock_response = MagicMock(status=404)
+        mock_get.return_value = mock_response
+        self.client.download_document(fake_document, str(output_dir))
+        self.assertFalse((output_dir / "fail.pdf").exists())
+
+    @patch.object(WoffuAPIClient, "get_documents")
+    @patch.object(WoffuAPIClient, "download_document")
+    def test_download_all_documents_no_documents(self, mock_download, mock_get_docs):
+        """download_all_documents with empty list calls download_document 0 times"""
+        mock_get_docs.return_value = []
+        self.client.download_all_documents()
+        mock_download.assert_not_called()
+
+    # -------------------------------
+    # Presence & Workday Slots
+    # -------------------------------
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_presence_http_error_returns_empty_dict(self, mock_get):
+        """_get_presence returns {} if HTTP status != 200"""
+        mock_get.return_value.status = 500
+        result = self.client._get_presence("2025-09-12", "2025-09-12")
+        self.assertEqual(result, {})
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_workday_slots_http_error_returns_empty_dict(self, mock_get):
+        """_get_workday_slots returns {} if HTTP status != 200"""
+        mock_get.return_value.status = 500
+        result = self.client._get_workday_slots(123)
+        self.assertEqual(result, {})
+
+    # -------------------------------
+    # Summary Report & Diary
+    # -------------------------------
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_empty_diaries(self, mock_slots, mock_presence):
+        """get_summary_report returns empty dict if no diaries"""
+        mock_presence.return_value = []
+        result = self.client.get_summary_report("2025-09-12", "2025-09-12")
+        self.assertEqual(result, {})
+
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_slot_without_motive_computes_hours(self, mock_slots):
+        """get_summary_report computes hours from in/out if no motive"""
+        diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": []}
+        mock_slots.return_value = [{"in": {"trueDate":"2025-09-12T12:00:00","utcTime":"12:00:00 +01"},
+                                    "out":{"trueDate":"2025-09-12T16:00:00","utcTime":"16:00:00 +01"}}]
+        with patch.object(self.client, "_get_presence", return_value=[diary]):
+            result = self.client.get_summary_report("2025-09-12", "2025-09-12")
+            self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 4)
+
+    @patch.object(WoffuAPIClient, "_get_diary_hour_types")
+    def test_get_diary_hour_types_summary_aggregates_multiple_types(self, mock_get):
+        """get_diary_hour_types_summary aggregates multiple hour types correctly"""
+        mock_get.return_value = [{"name": "TypeA", "hours": 1}, {"name": "TypeA", "hours": 2}]
+        summary = self.client.get_diary_hour_types_summary("2025-09-12", "2025-09-12")
+        self.assertEqual(summary["2025-09-12"]["TypeA"], 3)
+
+    # -------------------------------
+    # Signing & get_status
+    # -------------------------------
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_only_running_clock_last_sign_false(self, mock_get):
+        """get_status only_running_clock=True returns last sign boolean correctly"""
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = [
+            {"SignIn": True, "TrueDate":"2025-09-12T12:00:00.000", "UtcTime":"12:00:00 +01"},
+            {"SignIn": False, "TrueDate":"2025-09-12T16:00:00.000", "UtcTime":"16:00:00 +01"}
+        ]
+        _, running = self.client.get_status(only_running_clock=True)
+        self.assertFalse(running)
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_invalid_utc_fallback_local(self, mock_get):
+        """get_status handles invalid UtcTime and uses local timezone"""
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = [{"SignIn": True, "TrueDate":"2025-09-12T12:00:00.000", "UtcTime":"INVALID"}]
+        total, running = self.client.get_status()
+        self.assertTrue(running)
+        self.assertIsInstance(total, object)
+
+    @patch.object(WoffuAPIClient, "get_status", return_value=(0, True))
+    @patch.object(WoffuAPIClient, "post")
+    def test_sign_user_already_signed_returns_none(self, mock_post, mock_status):
+        """sign() returns None if user already signed in/out"""
+        result = self.client.sign(type="in")
+        self.assertIsNone(result)
+        mock_post.assert_not_called()
