@@ -514,7 +514,7 @@ class WoffuAPIClient(Session):
         return hour_types_summary
     
 
-    def get_summary_report(self, from_date:str = "", to_date:str = "") -> dict:
+    def get_summary_report(self, from_date: str = "", to_date: str = "") -> dict:
         """
         Generate a summary report based on the information provided by the Presence endpoint.
         """
@@ -539,25 +539,37 @@ class WoffuAPIClient(Session):
                 if slot and 'motive' in slot and slot['motive']:
                     total_time += slot['motive']['hours']
                 else:
-                    logger.info(f"Slot of date {diary['date']} doesn't have motive. Using `in` and `out` keys instead...")
-                    # Compute the difference between the sign in and sign out times
-                    in_date = slot['in']['trueDate']
-                    in_utc_offset = f"{slot['in']['utcTime'].split(' ')[1].zfill(3)}00"
-                    if in_utc_offset == "+0000":
-                        in_utc_offset = current_time.strftime("%z")
+                    logger.info(
+                        f"Slot of date {diary['date']} doesn't have motive. Using `in` and `out` keys instead..."
+                    )
+                    try:
+                        in_date = slot['in']['trueDate']
+                        out_date = slot['out']['trueDate']
 
-                    out_date = slot['out']['trueDate']
-                    out_utc_offset = f"{slot['out']['utcTime'].split(' ')[1].zfill(3)}00"
-                    if out_utc_offset == "+0000":
-                        out_utc_offset = current_time.strftime("%z")
+                        # Parse UTC offsets safely
+                        in_utc_parts = slot['in']['utcTime'].split(' ')
+                        out_utc_parts = slot['out']['utcTime'].split(' ')
+
+                        if len(in_utc_parts) < 2 or len(out_utc_parts) < 2:
+                            logger.warning(
+                                f"Skipping slot with invalid UTC times: in='{slot['in']['utcTime']}', out='{slot['out']['utcTime']}'"
+                            )
+                            continue
+
+                        in_utc_offset = f"{in_utc_parts[1].zfill(3)}00"
+                        out_utc_offset = f"{out_utc_parts[1].zfill(3)}00"
                                            
-                    in_date_timezoned = f"{in_date}{in_utc_offset}"
-                    out_date_timezoned = f"{out_date}{out_utc_offset}"
+                        in_date_timezoned = f"{in_date}{in_utc_offset}"
+                        out_date_timezoned = f"{out_date}{out_utc_offset}"
 
-                    in_dt = datetime.strptime(in_date_timezoned, f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z")
-                    out_dt = datetime.strptime(out_date_timezoned, f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z")
-            
-                    total_time += (out_dt - in_dt).total_seconds() / 3600
+                        in_dt = datetime.strptime(in_date_timezoned, f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z")
+                        out_dt = datetime.strptime(out_date_timezoned, f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z")
+                
+                        total_time += (out_dt - in_dt).total_seconds() / 3600
+                    
+                    except Exception as e:
+                        logger.warning(f"Skipping slot due to parsing error: {e}")
+                        continue
 
             event_report['work_hours'] = total_time
 
@@ -575,12 +587,16 @@ class WoffuAPIClient(Session):
             # Retrieve the other hour types
             if 'diaryHourTypes' in diary and diary['diaryHourTypes']:
                 for hour_type in diary['diaryHourTypes']:
-                    hour_type_id = hour_type['hourTypeId']
+                    hour_type_id = hour_type.get('hourTypeId', None)
+                    if hour_type_id is None:
+                        logger.warning(f"Skipping hour type with missing 'hourTypeId' in diary for date {diary['date']}")
+                        continue
+
                     hour_type_name = self.hour_types_dict[hour_type_id] if hour_type_id in self.hour_types_dict else hour_type_id
                     if hour_type_name not in event_report:
-                        event_report[hour_type_name] = hour_type['hours']
+                        event_report[hour_type_name] = hour_type.get('hours', 0)
                     else:
-                        event_report[hour_type_name] += hour_type['hours']
+                        event_report[hour_type_name] += hour_type.get('hours', 0)
 
         return summary_report
     

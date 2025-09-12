@@ -589,49 +589,52 @@ class TestWoffuAPIClientExtra(unittest.TestCase):
             result = self.client._get_diary_hour_types("2025-09-12")
             self.assertEqual(result, {})
 
-    # @patch.object(WoffuAPIClient, "_get_presence")
-    # @patch.object(WoffuAPIClient, "_get_workday_slots")
-    # def test_get_summary_report_invalid_slot_times_skipped(self, mock_slots, mock_presence):
-    #     """get_summary_report skips slots with invalid in/out times"""
-    #     diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": []}
-    #     mock_presence.return_value = [diary]
-    #     mock_slots.return_value = [
-    #         {"in": {"trueDate": "INVALID", "utcTime": "INVALID"},
-    #         "out": {"trueDate": "INVALID", "utcTime": "INVALID"}}
-    #     ]
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_invalid_slot_times_skipped(self, mock_slots, mock_presence):
+        """get_summary_report skips slots with invalid in/out times"""
+        diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": []}
+        mock_presence.return_value = [diary]
+        mock_slots.return_value = [
+            {"in": {"trueDate": "INVALID", "utcTime": "INVALID"},
+            "out": {"trueDate": "INVALID", "utcTime": "INVALID"}}
+        ]
 
-    #     result = self.client.get_summary_report("2025-09-12", "2025-09-12")
-    #     # Work hours should be 0 because in/out parsing failed
-    #     self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 0)
+        result = self.client.get_summary_report("2025-09-12", "2025-09-12")
+        # Work hours should be 0 because in/out parsing failed
+        self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 0)
 
-    # @patch.object(WoffuAPIClient, "get")
-    # def test_get_status_multiple_invalid_utc_formats(self, mock_get):
-    #     """get_status handles multiple invalid UtcTime formats"""
-    #     mock_get.return_value.status = 200
-    #     mock_get.return_value.json.return_value = [
-    #         {"SignIn": True, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "BAD1"},
-    #         {"SignIn": False, "TrueDate": "2025-09-12T16:00:00.000", "UtcTime": "BAD2"},
-    #     ]
-    #     total, running = self.client.get_status()
-    #     self.assertIsInstance(total, object)
-    #     self.assertFalse(running)
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_multiple_invalid_utc_formats(self, mock_get):
+        """get_status handles multiple invalid UtcTime formats"""
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = [
+            {"SignIn": True, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "BAD1"},
+            {"SignIn": False, "TrueDate": "2025-09-12T16:00:00.000", "UtcTime": "BAD2"},
+        ]
 
-    # @patch.object(WoffuAPIClient, "get")
-    # @patch.object(WoffuAPIClient, "post")
-    # def test_sign_post_fails_raises_exception(self, mock_post, mock_get):
-    #     """sign() propagates exception if POST fails"""
-    #     mock_get.return_value.status = 200
-    #     mock_get.return_value.json.return_value = [{"SignIn": False, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "12:00:00 +01"}]
-    #     mock_post.side_effect = Exception("POST failed")
-    #     with self.assertRaises(Exception):
-    #         self.client.sign(type="in")
+        total, running = self.client.get_status()
+        self.assertIsInstance(total, object)
+        self.assertFalse(running)
 
-    # @patch.object(WoffuAPIClient, "_get_presence")
-    # @patch.object(WoffuAPIClient, "_get_workday_slots")
-    # def test_get_summary_report_diary_with_missing_hours(self, mock_slots, mock_presence):
-    #     """get_summary_report correctly handles diaryHourTypes with missing 'hours' key"""
-    #     diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": [{"name": "A"}]}
-    #     mock_presence.return_value = [diary]
-    #     mock_slots.return_value = []
-    #     result = self.client.get_summary_report("2025-09-12", "2025-09-12")
-    #     self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 0)
+    @patch.object(WoffuAPIClient, "get")
+    @patch.object(WoffuAPIClient, "post")
+    def test_sign_post_fails_raises_exception(self, mock_post, mock_get):
+        """sign() propagates exception if POST fails"""
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = [{"SignIn": False, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "12:00:00 +01"}]
+        mock_post.side_effect = Exception("POST failed")
+
+        with self.assertRaises(Exception):
+            self.client.sign(type="in")
+
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_diary_with_missing_hours(self, mock_slots, mock_presence):
+        """get_summary_report correctly handles diaryHourTypes with missing 'hours' key"""
+        diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": [{"name": "A"}]}
+        mock_presence.return_value = [diary]
+        mock_slots.return_value = []
+
+        result = self.client.get_summary_report("2025-09-12", "2025-09-12")
+        self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 0)
