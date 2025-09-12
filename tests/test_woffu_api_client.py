@@ -278,12 +278,32 @@ class TestWoffuAPIClientExtra(unittest.TestCase):
         self.assertEqual(self.client._token, "OLD")
 
     @patch.object(WoffuAPIClient, "post")
-    def test_retrieve_access_token_invalid_credentials_sets_empty_token(self, mock_post):
+    @patch("src.woffu_client.woffu_api_client.logger")
+    def test_retrieve_access_token_invalid_credentials_sets_empty_token(self, mock_logger, mock_post):
         """_retrieve_access_token sets empty token if HTTP status != 200"""
         mock_response = MagicMock(status=401, json=lambda: {})
         mock_post.return_value = mock_response
+
         self.client._retrieve_access_token(username="u", password="p")
         self.assertEqual(self.client._token, "")
+
+        # ✅ Verify log recorded HTTP failure
+        mock_logger.error.assert_called_once()
+        args, kwargs = mock_logger.error.call_args
+        self.assertIn("Failed to retrieve access token", args[0])
+
+    @patch("src.woffu_client.woffu_api_client.logger")
+    def test_request_credentials_non_interactive_logs_error_and_exits(self, mock_logger):
+        """_request_credentials logs error before exiting when non-interactive and no env vars"""
+        self.client._interactive = False
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(SystemExit):
+                self.client._request_credentials()
+
+        # ✅ Verify log recorded HTTP failure
+        mock_logger.error.assert_called_once()
+        args, kwargs = mock_logger.error.call_args
+        self.assertIn("Can't request token in non-interactive method without username and password. Please provide them in WOFFU_USERNAME and WOFFU_PASSWORD.", args[0])
 
     def test_request_credentials_non_interactive_no_env_exits(self):
         """_request_credentials exits when non-interactive and no env vars"""
@@ -301,19 +321,41 @@ class TestWoffuAPIClientExtra(unittest.TestCase):
             mock_req.assert_called_once()
             mock_save.assert_called_once()
 
+    @patch.object(WoffuAPIClient, "_request_credentials")
+    @patch.object(WoffuAPIClient, "_save_credentials")
+    @patch("src.woffu_client.woffu_api_client.logger")
+    def test_load_credentials_missing_file_logs_and_requests(self, mock_logger, mock_save, mock_req):
+        """_load_credentials logs a warning, requests credentials and saves them if config is missing"""
+        self.client._config_file = Path("non_existing.json")
+        self.client._load_credentials()
+
+        mock_req.assert_called_once()
+        mock_save.assert_called_once()
+        # ✅ Verify log recorded HTTP failure
+        mock_logger.warning.assert_called_once()
+        args, kwargs = mock_logger.warning.call_args
+        self.assertIn(f"Config file '{self.client._config_file}' doesn't exist! Requesting authentication token...", args[0])
+
     # -------------------------------
     # Document Download & Filesystems
     # -------------------------------
     @patch.object(WoffuAPIClient, "get")
-    def test_download_document_http_fail_does_not_write_file(self, mock_get):
+    @patch("src.woffu_client.woffu_api_client.logger")
+    def test_download_document_http_fail_does_not_write_file(self, mock_logger, mock_get):
         """download_document does not write file if HTTP status != 200"""
         output_dir = self.tmp_dir / "downloads"
         output_dir.mkdir(exist_ok=True)
         fake_document = {"Name": "fail.pdf", "DocumentId": "DOC_ID"}
         mock_response = MagicMock(status=404)
         mock_get.return_value = mock_response
+
         self.client.download_document(fake_document, str(output_dir))
         self.assertFalse((output_dir / "fail.pdf").exists())
+
+        # ✅ Verify log recorded HTTP failure
+        mock_logger.error.assert_called_once()
+        args, kwargs = mock_logger.error.call_args
+        self.assertIn(f"Failed to download '{fake_document['Name']}'", args[0])
 
     @patch.object(WoffuAPIClient, "get_documents")
     @patch.object(WoffuAPIClient, "download_document")
@@ -327,19 +369,30 @@ class TestWoffuAPIClientExtra(unittest.TestCase):
     # Presence & Workday Slots
     # -------------------------------
     @patch.object(WoffuAPIClient, "get")
-    def test_get_presence_http_error_returns_empty_dict(self, mock_get):
+    @patch("src.woffu_client.woffu_api_client.logger")
+    def test_get_presence_http_error_returns_empty_dict(self, mock_logger, mock_get):
         """_get_presence returns {} if HTTP status != 200"""
         mock_get.return_value.status = 500
         result = self.client._get_presence("2025-09-12", "2025-09-12")
         self.assertEqual(result, {})
 
+        # ✅ Verify log recorded HTTP failure
+        mock_logger.error.assert_called_once()
+        args, kwargs = mock_logger.error.call_args
+        self.assertIn("presence", args[0])
+
     @patch.object(WoffuAPIClient, "get")
-    def test_get_workday_slots_http_error_returns_empty_dict(self, mock_get):
+    @patch("src.woffu_client.woffu_api_client.logger")
+    def test_get_workday_slots_http_error_returns_empty_dict(self, mock_logger, mock_get):
         """_get_workday_slots returns {} if HTTP status != 200"""
         mock_get.return_value.status = 500
         result = self.client._get_workday_slots(123)
         self.assertEqual(result, {})
 
+        # ✅ Verify log recorded HTTP failure
+        mock_logger.error.assert_called_once()
+        args, kwargs = mock_logger.error.call_args
+        self.assertIn("workday slots", args[0])
     # -------------------------------
     # Summary Report & Diary
     # -------------------------------
@@ -398,3 +451,155 @@ class TestWoffuAPIClientExtra(unittest.TestCase):
         result = self.client.sign(type="in")
         self.assertIsNone(result)
         mock_post.assert_not_called()
+
+    # -------------------------------
+    # Additional Coverage for Edge Cases
+    # -------------------------------
+    @patch.object(WoffuAPIClient, "post")
+    @patch("src.woffu_client.woffu_api_client.logger")
+    def test_retrieve_access_token_invalid_json_returns_empty_token(self, mock_logger, mock_post):
+        """_retrieve_access_token should handle invalid JSON response gracefully and set empty token."""
+        mock_response = MagicMock(status=200)
+        mock_response.json.side_effect = ValueError("Invalid JSON")
+        mock_post.return_value = mock_response
+
+        old_token = self.client._token
+        self.client._retrieve_access_token(username="u", password="p")
+
+        # Token must be reset to empty string
+        self.assertEqual(self.client._token, "")
+
+        # ✅ Assert logging happened
+        mock_logger.error.assert_called_once()
+        args, kwargs = mock_logger.error.call_args
+        self.assertIn("Invalid JSON", args[0])
+
+    @patch.object(WoffuAPIClient, "post")
+    def test_retrieve_access_token_success_sets_token(self, mock_post):
+        """_retrieve_access_token should store token when JSON is valid."""
+        mock_response = MagicMock(status=200)
+        mock_response.json.return_value = {"access_token": "NEW_TOKEN"}
+        mock_post.return_value = mock_response
+
+        self.client._token = "OLD"
+        self.client._retrieve_access_token(username="u", password="p")
+
+        self.assertEqual(self.client._token, "NEW_TOKEN")
+
+    @patch.object(WoffuAPIClient, "post")
+    def test_retrieve_access_token_missing_credentials_logs_error(self, mock_post):
+        """If username/password missing, no POST request should be sent and token remains unchanged."""
+        old_token = self.client._token
+        self.client._retrieve_access_token(username="", password="")
+        mock_post.assert_not_called()
+        self.assertEqual(self.client._token, old_token)
+
+    # def test_request_credentials_interactive_reads_input(self):
+    #     """_request_credentials sets username/password when interactive"""
+    #     self.client._interactive = True
+    #     inputs = iter(["myuser", "mypassword"])
+    #     with patch("builtins.input", lambda _: next(inputs)), \
+    #          patch.object(self.client, "_save_credentials") as mock_save:
+    #         self.client._request_credentials()
+    #         self.assertEqual(self.client._username, "myuser")
+    #         self.assertEqual(self.client._token, "mypassword")  # token set to password placeholder
+    #         mock_save.assert_called_once()
+
+    # @patch("builtins.open", side_effect=PermissionError)
+    # def test_save_credentials_permission_error(self, mock_open):
+    #     """_save_credentials handles file write permission errors"""
+    #     creds = {"username": "u", "token": "t"}
+    #     with self.assertRaises(PermissionError):
+    #         self.client._save_credentials(creds)
+
+    # @patch.object(WoffuAPIClient, "get")
+    # def test_download_document_creates_directory_if_missing(self, mock_get):
+    #     """download_document creates missing directory automatically"""
+    #     fake_document = {"Name": "file.pdf", "DocumentId": "ID"}
+    #     output_dir = self.tmp_dir / "new_downloads"
+    #     mock_response = MagicMock(status=200)
+    #     mock_response.content = b"DATA"
+    #     mock_get.return_value = mock_response
+
+    #     self.client.download_document(fake_document, str(output_dir))
+    #     file_path = output_dir / "file.pdf"
+    #     self.assertTrue(file_path.exists())
+    #     self.assertEqual(file_path.read_bytes(), b"DATA")
+
+    # @patch.object(WoffuAPIClient, "get")
+    # def test_download_document_raises_exception_skips_file(self, mock_get):
+    #     """download_document handles exception and does not create file"""
+    #     fake_document = {"Name": "fail.pdf", "DocumentId": "ID"}
+    #     output_dir = self.tmp_dir / "downloads"
+    #     output_dir.mkdir(exist_ok=True)
+    #     mock_get.side_effect = Exception("Network error")
+
+    #     self.client.download_document(fake_document, str(output_dir))
+    #     self.assertFalse((output_dir / "fail.pdf").exists())
+
+    # @patch.object(WoffuAPIClient, "get_documents")
+    # @patch.object(WoffuAPIClient, "download_document")
+    # def test_download_all_documents_partial_failures(self, mock_download, mock_get_docs):
+    #     """download_all_documents continues even if some downloads fail"""
+    #     mock_get_docs.return_value = [{"Name": "a.pdf", "DocumentId": "1"},
+    #                                   {"Name": "b.pdf", "DocumentId": "2"}]
+
+    #     def fail_on_second(doc, output_dir):
+    #         if doc["Name"] == "b.pdf":
+    #             raise Exception("Download failed")
+
+    #     mock_download.side_effect = fail_on_second
+    #     self.client.download_all_documents()
+    #     self.assertEqual(mock_download.call_count, 2)
+
+    # @patch.object(WoffuAPIClient, "get")
+    # def test_get_diary_hour_types_unexpected_type_returns_empty(self, mock_get):
+    #     """_get_diary_hour_types returns empty if response is not list/dict"""
+    #     mock_get.return_value.status = 200
+    #     mock_get.return_value.json.return_value = None
+    #     result = self.client._get_diary_hour_types("2025-09-12")
+    #     self.assertEqual(result, {})
+
+    # @patch.object(WoffuAPIClient, "_get_presence")
+    # @patch.object(WoffuAPIClient, "_get_workday_slots")
+    # def test_get_summary_report_invalid_slot_times_skipped(self, mock_slots, mock_presence):
+    #     """get_summary_report skips slots with invalid in/out times"""
+    #     diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": []}
+    #     mock_presence.return_value = [diary]
+    #     mock_slots.return_value = [{"in": {"trueDate": "INVALID", "utcTime": "INVALID"},
+    #                                 "out": {"trueDate": "INVALID", "utcTime": "INVALID"}}]
+
+    #     result = self.client.get_summary_report("2025-09-12", "2025-09-12")
+    #     self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 0)
+
+    # @patch.object(WoffuAPIClient, "get")
+    # def test_get_status_multiple_invalid_utc_formats(self, mock_get):
+    #     """get_status handles multiple invalid UtcTime formats"""
+    #     mock_get.return_value.status = 200
+    #     mock_get.return_value.json.return_value = [
+    #         {"SignIn": True, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "BAD1"},
+    #         {"SignIn": False, "TrueDate": "2025-09-12T16:00:00.000", "UtcTime": "BAD2"},
+    #     ]
+    #     total, running = self.client.get_status()
+    #     self.assertIsInstance(total, object)
+    #     self.assertFalse(running)
+
+    # @patch.object(WoffuAPIClient, "get")
+    # @patch.object(WoffuAPIClient, "post")
+    # def test_sign_post_fails_raises_exception(self, mock_post, mock_get):
+    #     """sign() propagates exception if POST fails"""
+    #     mock_get.return_value.status = 200
+    #     mock_get.return_value.json.return_value = [{"SignIn": False, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "12:00:00 +01"}]
+    #     mock_post.side_effect = Exception("POST failed")
+    #     with self.assertRaises(Exception):
+    #         self.client.sign(type="in")
+
+    # @patch.object(WoffuAPIClient, "_get_presence")
+    # @patch.object(WoffuAPIClient, "_get_workday_slots")
+    # def test_get_summary_report_diary_with_missing_hours(self, mock_slots, mock_presence):
+    #     """get_summary_report correctly handles diaryHourTypes with missing 'hours' key"""
+    #     diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": [{"name": "A"}]}
+    #     mock_presence.return_value = [diary]
+    #     mock_slots.return_value = []
+    #     result = self.client.get_summary_report("2025-09-12", "2025-09-12")
+    #     self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 0)

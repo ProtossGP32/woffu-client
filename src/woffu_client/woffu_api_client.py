@@ -80,13 +80,16 @@ class WoffuAPIClient(Session):
                 "password": password
             }
         )
-
+        self._token = ""
         if token_response.status == 200:
-            self._token = token_response.json()['access_token']
+            try:
+                json_data = token_response.json()
+                self._token = json_data.get('access_token', "")
+            except ValueError:
+                logger.error("Invalid JSON received when retrieving access token.")
+                self._token = ""        
         else:
-            logger.error(f"Can't retrieve access token. Please review username and password and try again. Error code: {token_response.status}")
-            self._token = ""
-        
+            logger.error("Failed to retrieve access token")
 
     def _save_credentials(self):
         """
@@ -147,7 +150,7 @@ class WoffuAPIClient(Session):
             self._config_file = Path(creds_file)
         
         if not self._config_file.exists():
-            logger.error(f"Config file '{self._config_file}' doesn't exist! Requesting authentication token...")
+            logger.warning(f"Config file '{self._config_file}' doesn't exist! Requesting authentication token...")
             self._request_credentials()
             self._save_credentials()
             
@@ -247,6 +250,8 @@ class WoffuAPIClient(Session):
             #with open(file=document_path, mode='bw') as f:
             #    f.write(document_response.content)
             document_path.write_bytes(document_response.content)
+        else:
+            logger.error(f"Failed to download '{document['Name']}'")
 
     def download_all_documents(self, output_dir: str = "") -> None:
         """
