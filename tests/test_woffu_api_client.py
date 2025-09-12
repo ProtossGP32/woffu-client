@@ -494,23 +494,35 @@ class TestWoffuAPIClientExtra(unittest.TestCase):
         mock_post.assert_not_called()
         self.assertEqual(self.client._token, old_token)
 
-    # def test_request_credentials_interactive_reads_input(self):
-    #     """_request_credentials sets username/password when interactive"""
-    #     self.client._interactive = True
-    #     inputs = iter(["myuser", "mypassword"])
-    #     with patch("builtins.input", lambda _: next(inputs)), \
-    #          patch.object(self.client, "_save_credentials") as mock_save:
-    #         self.client._request_credentials()
-    #         self.assertEqual(self.client._username, "myuser")
-    #         self.assertEqual(self.client._token, "mypassword")  # token set to password placeholder
-    #         mock_save.assert_called_once()
+    @patch("builtins.input", return_value="testuser")
+    @patch("src.woffu_client.woffu_api_client.getpass", return_value="testpass")
+    @patch.object(WoffuAPIClient, "_retrieve_access_token")
+    @patch.object(WoffuAPIClient, "_save_credentials")  # avoid writing file
+    @patch.object(WoffuAPIClient, "get")  # mock HTTP GET requests
+    def test_request_credentials_interactive_reads_input(self, mock_get, mock_save, mock_token, mock_getpass, mock_input):
+        # Setup mock return values for HTTP GET requests
+        # First call: users
+        users_mock = {"UserId": "123", "CompanyId": "456"}
+        company_mock = {"Domain": "example.com"}
+        mock_get.side_effect = [
+            MagicMock(json=lambda: users_mock),
+            MagicMock(json=lambda: company_mock)
+        ]
 
-    # @patch("builtins.open", side_effect=PermissionError)
-    # def test_save_credentials_permission_error(self, mock_open):
-    #     """_save_credentials handles file write permission errors"""
-    #     creds = {"username": "u", "token": "t"}
-    #     with self.assertRaises(PermissionError):
-    #         self.client._save_credentials(creds)
+        tmp_config = Path("/tmp/woffu_auth.json")  # dummy path, won't exist
+
+        client = WoffuAPIClient(config=str(tmp_config), interactive=True)
+
+        # Assert _retrieve_access_token was called with the patched input values
+        mock_token.assert_called_once_with(username="testuser", password="testpass")
+        # Ensure the headers were composed
+        self.assertIsInstance(client.headers, dict)
+
+    @patch("pathlib.Path.open", side_effect=PermissionError)
+    def test_save_credentials_permission_error(self, mock_open):
+        """_save_credentials handles file write permission errors"""
+        with self.assertRaises(PermissionError):
+            self.client._save_credentials()
 
     # @patch.object(WoffuAPIClient, "get")
     # def test_download_document_creates_directory_if_missing(self, mock_get):
