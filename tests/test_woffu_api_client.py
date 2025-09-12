@@ -7,6 +7,9 @@ from unittest.mock import patch, MagicMock
 from datetime import timedelta
 from src.woffu_client.woffu_api_client import WoffuAPIClient
 import os
+from typing import Optional, Dict
+from io import StringIO
+import pytest
 
 class BaseWoffuAPITest(unittest.TestCase):
     """Base class for tests that need temporary credentials and a WoffuAPIClient."""
@@ -167,12 +170,12 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
         docs = [{"Name": "a.pdf", "DocumentId": "1"}, {"Name": "b.pdf", "DocumentId": "2"}]
         mock_get_docs.return_value = docs
 
-        def fail_second(*args, **kwargs):
-            doc = kwargs.get("document") or (args[0] if args else None)
-            if doc["Name"] == "b.pdf":
+        def fail_on_second(*args, **kwargs):
+            doc: Optional[Dict] = kwargs.get("document") or (args[0] if args else None)
+            if doc is not None and doc["Name"] == "b.pdf":
                 raise Exception("Download failed")
 
-        mock_download.side_effect = fail_second
+        mock_download.side_effect = fail_on_second
         self.client.download_all_documents()
         self.assertEqual(mock_download.call_count, 2)
 
@@ -215,8 +218,8 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
         ]
 
         def fail_on_second(*args, **kwargs):
-            doc = kwargs.get("document") or (args[0] if args else None)
-            if doc and doc["Name"] == "b.pdf":
+            doc: Optional[Dict] = kwargs.get("document") or (args[0] if args else None)
+            if doc is not None and doc["Name"] == "b.pdf":
                 raise Exception("Download failed")
 
         mock_download.side_effect = fail_on_second
@@ -484,6 +487,28 @@ class TestWoffuAPIRequestCredentials(BaseWoffuAPITest):
 # -------------------------------
 class TestWoffuAPICredentialsFile(BaseWoffuAPITest):
 
+    def test_load_credentials_external_file(self):
+        # Prepare a temporal file with the expected credentials info
+        creds_json = {
+            "username": "external_user",
+            "token": "external_token",
+            "user_id": 12345,
+            "company_id": 23553,
+            "domain": "external.woffu.com"
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            creds_path = Path(tmpdir) / "creds.json"
+            creds_path.write_text(json.dumps(creds_json))
+
+            self.client._load_credentials(str(creds_path))
+
+            self.assertEqual(self.client._username, "external_user")
+            self.assertEqual(self.client._token, "external_token")
+            self.assertEqual(self.client._user_id, 12345)
+            self.assertEqual(self.client._company_id, 23553)
+            self.assertEqual(self.client._domain, "external.woffu.com")
+
     def test_load_credentials_missing_file_requests_and_saves(self):
         """_load_credentials triggers _request_credentials and _save_credentials if config missing"""
         self.client._interactive = True  # prevent sys.exit
@@ -545,11 +570,28 @@ class TestWoffuAPICredentialsFile(BaseWoffuAPITest):
             mock_save.assert_called_once()
             self.assertEqual(self.client._username, "env_user")
 
+    @patch("src.woffu_client.woffu_api_client.logger")
+    def test_save_credentials(self, mock_logger):
+        self.client._save_credentials()
+
+        # ✅ Verify log recorded HTTP failure
+        mock_logger.info.assert_called_once()
+        args, kwargs = mock_logger.info.call_args
+        self.assertIn(f"✅ Credentials stored in: {self.client._config_file}", args[0])
+
     @patch("pathlib.Path.open", side_effect=OSError("Cannot write file"))
     def test_save_credentials_other_oserror(self, mock_open):
         """_save_credentials handles generic OSError"""
         with self.assertRaises(OSError):
             self.client._save_credentials()
+
+    @patch("src.woffu_client.woffu_api_client.Path.open")
+    def test_save_credentials_raises_oserror(self, mock_open):
+        """_save_credentials should raise if writing to file fails"""
+        mock_open.side_effect = OSError("Disk full")
+        with self.assertRaises(OSError):
+            self.client._save_credentials()
+
 
     # --------------------------
     # Possible duplicated tests?
@@ -665,8 +707,16 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
         # Work hours should be 0 because in/out parsing failed
         self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 0)
 
-
+# -------------
+# Status & Sign
+# -------------
 class TestWoffuAPIStatusSign(BaseWoffuAPITest):
+
+    # TODO: tests for `WoffuAPIClient._get_sign_requests`
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_sign_requests(self, mock_get):
+        """Test sign motives requests, sign sends GET."""
+        pass
 
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_and_sign(self, mock_get):
@@ -739,3 +789,69 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
         total, running = self.client.get_status()
         self.assertIsInstance(total, timedelta)
         self.assertFalse(running)
+
+
+class TestWoffuAPICSVExport(BaseWoffuAPITest):
+
+    @patch("src.woffu_client.woffu_api_client.logger")
+    @patch.object(Path, "mkdir")
+    @patch("builtins.open", create=True)
+    def test_export_summary_to_csv(self, mock_open, mock_mkdir, mock_logger):
+        test_cases = [
+            (
+                {
+                    "2025-01-01": {"Extr. a compensar": 0.5, "work_hours": 8.5},
+                    "2025-01-02": {"work_hours": 7.5},
+                },
+                "",
+                "",
+                ["2025-01-01", "2025-01-02"],
+            ),
+            (
+                {
+                    "2025-01-01": {"Extr. a compensar": 1.5, "work_hours": 9.0},
+                    "2025-01-05": {"work_hours": 6.5},
+                },
+                "2025-01-01",
+                "2025-01-05",
+                ["2025-01-01", "2025-01-05"],
+            ),
+            (
+                {},
+                "",
+                "",
+                [],
+            ),
+        ]
+
+        for summary_report, from_date, to_date, expected_rows in test_cases:
+            fake_csv_buffer = StringIO()
+            mock_open.return_value.__enter__.return_value = fake_csv_buffer
+            fake_path = Path("/fake/path")
+
+            self.client.export_summary_to_csv(
+                summary_report, from_date, to_date, output_path=fake_path
+            )
+
+            mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
+
+            fake_csv_buffer.seek(0)
+            csv_content = fake_csv_buffer.read()
+
+            if expected_rows:
+                for header in ["Extr. a compensar", "work_hours", "date"]:
+                    self.assertIn(header, csv_content)
+                for row in expected_rows:
+                    self.assertIn(row, csv_content)
+            else:
+                self.assertTrue(csv_content.strip() == "" or csv_content.startswith(""))
+
+            mock_logger.info.assert_called_once()
+            log_msg = mock_logger.info.call_args[0][0]
+            self.assertIn("✅ CSV exported to", log_msg)
+            self.assertIn(str(fake_path), log_msg)
+
+            # Reset mocks for next iteration
+            mock_open.reset_mock()
+            mock_mkdir.reset_mock()
+            mock_logger.reset_mock()
