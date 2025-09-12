@@ -652,7 +652,7 @@ class WoffuAPIClient(Session):
 
         with open(csv_filename, 'w', newline=os.linesep) as csvfile:
             # Prepare the CSV writer
-            writer = csv.DictWriter(csvfile, fieldnames=sorted(reports_header), delimiter=delimiter, quoting=csv.QUOTE_STRINGS)
+            writer = csv.DictWriter(csvfile, fieldnames=sorted(reports_header), delimiter=delimiter, quoting=csv.QUOTE_MINIMAL)
             writer.writeheader()
 
             # Write rows
