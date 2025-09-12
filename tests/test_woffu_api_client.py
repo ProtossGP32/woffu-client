@@ -712,80 +712,68 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
 # -------------
 class TestWoffuAPIStatusSign(BaseWoffuAPITest):
 
-    # TODO: tests for `WoffuAPIClient._get_sign_requests`
-    @patch.object(WoffuAPIClient, "get")
-    def test_get_sign_requests(self, mock_get):
-        """Test that get_sign_requests calls the correct URL with the right date parameter."""
-        fake_response = {"Holidays": [{"date": "09/12/2025", "type": "Holiday"}]}
-        mock_get.return_value = fake_response
-
-        # Create a mock response object
-        mock_response = MagicMock(status=200)
-        mock_response.json.return_value = fake_response
-        mock_get.return_value = mock_response
-
-        test_date = "09/12/2025"
-        result = self.client.get_sign_requests(test_date)
-
-        # Assert get was called once with the proper URL and params
-        mock_get.assert_called_once_with(
-            url=f"https://{self.client._domain}/api/svc/core/diary/user/requests",
-            params={"date": test_date}
-        )
-
-        # Assert the method returns the mocked response
-        self.assertEqual(result, fake_response)
-
-    @patch.object(WoffuAPIClient, "get")
-    def test_get_sign_requests_invalid_response(self, mock_get):
-        """Test that get_sign_requests calls the correct URL with the right date parameter."""
-        fake_response = "This isn't neither a dict nor a list"
-        mock_get.return_value = fake_response
-
-        # Create a mock response object
-        mock_response = MagicMock(status=200)
-        mock_response.json.return_value = fake_response
-        mock_get.return_value = mock_response
-
-        test_date = "09/12/2025"
-        result = self.client.get_sign_requests(test_date)
-
-        # Assert get was called once with the proper URL and params
-        mock_get.assert_called_once_with(
-            url=f"https://{self.client._domain}/api/svc/core/diary/user/requests",
-            params={"date": test_date}
-        )
-
-        # Assert the method returns the mocked response
-        self.assertEqual(result, {})
-
     @patch.object(WoffuAPIClient, "get")
     @patch("src.woffu_client.woffu_api_client.logger")
-    def test_get_sign_requests_bad_status(self, mock_logger, mock_get):
-        """Test that get_sign_requests calls the correct URL with the right date parameter."""
-        fake_response = {"Holidays": [{"date": "09/12/2025", "type": "Holiday"}]}
-        mock_get.return_value = fake_response
-
-        # Create a mock response object
-        mock_response = MagicMock(status=500)
-        mock_get.return_value = mock_response
-
+    def test_get_sign_requests_variants(self, mock_logger, mock_get):
+        """Test get_sign_requests for success and failure branches using subTest."""
         test_date = "09/12/2025"
-        result = self.client.get_sign_requests(test_date)
 
-        # Assert get was called once with the proper URL and params
-        mock_get.assert_called_once_with(
-            url=f"https://{self.client._domain}/api/svc/core/diary/user/requests",
-            params={"date": test_date}
-        )
+        test_cases = [
+            {
+                "status": 200,
+                "json": {"Holidays": [{"date": test_date, "type": "Holiday"}]},
+                "expected_result": {"Holidays": [{"date": test_date, "type": "Holiday"}]},
+                "log_called": False,
+            },
+            {
+                "status": 500,
+                "json": None,
+                "expected_result": {},
+                "log_called": True,
+            },
+            {
+                "status": 200,
+                "json": "This is neither a dict nor a list",
+                "expected_result": {},
+                "log_called": False,
+            },
+            {
+                "status": 200,
+                "json": None,
+                "expected_result": {},
+                "log_called": False,
+            },
+        ]
 
-        # Assert the method returns the mocked response
-        self.assertEqual(result, {})
+        for case in test_cases:
+            with self.subTest(status=case["status"]):
+                # Prepare mock response
+                mock_response = MagicMock()
+                mock_response.status = case["status"]
+                if case["json"] is not None:
+                    mock_response.json.return_value = case["json"]
+                mock_get.return_value = mock_response
 
-         # Logger should be called with the failure message
-        mock_logger.error.assert_called_once()
-        log_args, _ = mock_logger.error.call_args
-        self.assertIn(f"Can't retrieve sign motives for date {test_date}!", log_args[0])
+                # Call the method
+                result = self.client.get_sign_requests(test_date)
+
+                # Assertions
+                mock_get.assert_called_once_with(
+                    url=f"https://{self.client._domain}/api/svc/core/diary/user/requests",
+                    params={"date": test_date}
+                )
+                self.assertEqual(result, case["expected_result"])
+
+                if case["log_called"]:
+                    mock_logger.error.assert_called_once()
+                    log_args, _ = mock_logger.error.call_args
+                    self.assertIn(f"Can't retrieve sign motives for date {test_date}!", log_args[0])
+                else:
+                    mock_logger.error.assert_not_called()
+
+                # Reset mocks for next subTest
+                mock_get.reset_mock()
+                mock_logger.reset_mock()
 
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_and_sign(self, mock_get):
