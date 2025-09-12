@@ -803,8 +803,9 @@ class TestWoffuAPICSVExport(BaseWoffuAPITest):
                     "2025-01-01": {"Extr. a compensar": 0.5, "work_hours": 8.5},
                     "2025-01-02": {"work_hours": 7.5},
                 },
-                "",
-                "",
+                "", # from_date
+                "", # to_date
+                ",", # delimiter
                 ["2025-01-01", "2025-01-02"],
             ),
             (
@@ -814,23 +815,25 @@ class TestWoffuAPICSVExport(BaseWoffuAPITest):
                 },
                 "2025-01-01",
                 "2025-01-05",
+                ";", # delimiter
                 ["2025-01-01", "2025-01-05"],
             ),
             (
                 {},
                 "",
                 "",
+                ",", # delimiter
                 [],
             ),
         ]
 
-        for summary_report, from_date, to_date, expected_rows in test_cases:
+        for summary_report, from_date, to_date, delimiter, expected_rows in test_cases:
             fake_csv_buffer = StringIO()
             mock_open.return_value.__enter__.return_value = fake_csv_buffer
             fake_path = Path("/fake/path")
 
             self.client.export_summary_to_csv(
-                summary_report, from_date, to_date, output_path=fake_path
+                summary_report, from_date, to_date, output_path=fake_path, delimiter=delimiter
             )
 
             mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
@@ -843,6 +846,8 @@ class TestWoffuAPICSVExport(BaseWoffuAPITest):
                     self.assertIn(header, csv_content)
                 for row in expected_rows:
                     self.assertIn(row, csv_content)
+                # Check delimiter
+                self.assertIn(delimiter, csv_content)
             else:
                 self.assertTrue(csv_content.strip() == "" or csv_content.startswith(""))
 
@@ -855,3 +860,27 @@ class TestWoffuAPICSVExport(BaseWoffuAPITest):
             mock_open.reset_mock()
             mock_mkdir.reset_mock()
             mock_logger.reset_mock()
+
+    @patch("src.woffu_client.woffu_api_client.logger")
+    @patch.object(Path, "mkdir")
+    @patch("builtins.open", create=True)
+    def test_export_summary_to_csv_custom_delimiter(self, mock_open, mock_mkdir, mock_logger):
+        """Specifically test exporting CSV using a custom delimiter (';')."""
+        summary_report = {
+            "2025-01-01": {"Extr. a compensar": 0.5, "work_hours": 8.5}
+        }
+        fake_csv_buffer = StringIO()
+        mock_open.return_value.__enter__.return_value = fake_csv_buffer
+        fake_path = Path("/fake/path")
+
+        self.client.export_summary_to_csv(
+            summary_report, output_path=fake_path, delimiter=";"
+        )
+
+        fake_csv_buffer.seek(0)
+        csv_content = fake_csv_buffer.read()
+        self.assertIn(";", csv_content)
+        self.assertIn("2025-01-01", csv_content)
+        self.assertIn("Extr. a compensar", csv_content)
+        self.assertIn("work_hours", csv_content)
+        mock_logger.info.assert_called_once()
