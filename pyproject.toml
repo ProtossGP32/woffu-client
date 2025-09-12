@@ -7,7 +7,7 @@ name = "woffu_client"
 version = "0.0.0" # This will be replaced by the CI pipeline
 requires-python = ">=3.10,<3.14"
 description = "Woffu API client with access to several endpoints."
-authors = [{name="Marc Palacín Marfil", email="marc.palacin@bsc.es"}]
+authors = [{name="Marc Palacín Marfil", email="marc.palacin.marfil@gmail.com"}]
 readme = "README.md"
 license = {text = "MIT"}
 dependencies = [
