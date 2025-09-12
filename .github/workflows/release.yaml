@@ -19,9 +19,13 @@ on:
     # Trigger workflow on tag push explicitly
     tags:
       - 'v*.*.*'  # trigger only on tags for releases
+    paths-ignore:
+      - 'github/ISSUE_TEMPLATE/*'
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - 'github/ISSUE_TEMPLATE/*'
 
 jobs:
   test:
