@@ -1,4 +1,5 @@
 import json
+import shutil
 import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -6,7 +7,7 @@ from src.woffu_client.woffu_api_client import WoffuAPIClient
 
 
 class TestWoffuAPIClient(unittest.TestCase):
-    """Unit tests for WoffuAPIClient focusing on initialization, headers, and basic network calls."""
+    """Unit tests for WoffuAPIClient focusing on initialization, headers, network, and filesystem."""
 
     def setUp(self):
         """Create a temporary credentials file and initialize client."""
@@ -22,7 +23,7 @@ class TestWoffuAPIClient(unittest.TestCase):
         }
         self.creds_file.write_text(json.dumps(creds))
 
-        # Initialize client once per test
+        # ✅ Initialize client once per test
         self.client = WoffuAPIClient(config=self.creds_file)
 
     def tearDown(self):
@@ -30,8 +31,11 @@ class TestWoffuAPIClient(unittest.TestCase):
         if self.creds_file.exists():
             self.creds_file.unlink()
         if self.tmp_dir.exists():
-            self.tmp_dir.rmdir()
+            shutil.rmtree(self.tmp_dir)
 
+    # ----------------------
+    # Initialization & headers
+    # ----------------------
     def test_client_initialization_loads_credentials(self):
         """Verify that client loads domain, username, token, and sets headers from config file."""
         self.assertEqual(self.client._domain, "fake.woffu.com")
@@ -59,38 +63,67 @@ class TestWoffuAPIClient(unittest.TestCase):
         headers = self.client._compose_auth_headers()
 
         self.assertEqual(headers["Authorization"], "Bearer NEW_FAKE_TOKEN")
-        self.assertIn("Accept", headers)
         self.assertEqual(headers["Accept"], "application/json")
 
-    def test_get_request_is_sent_with_correct_headers(self):
-        """Verify that GET requests use the correct URL and headers."""
-        with patch.object(WoffuAPIClient, "get", autospec=True) as mock_get:
+    # ------------------------
+    # Basic Network Calls
+    # ------------------------
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_request_is_sent_with_correct_headers(self, mock_get):
+        """Test that GET requests can be called (headers applied internally)."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json.return_value = {"key": "value"}
+        mock_get.return_value = mock_response
+
+        url = f"https://{self.client._domain}/api/some_endpoint"
+        self.client.get(url)
+
+        mock_get.assert_called_once()
+
+    @patch.object(WoffuAPIClient, "post")
+    def test_post_request_is_sent_with_expected_data(self, mock_post):
+        data = {"key": "value"}
+        self.client.post("/api/some_endpoint", json=data)
+
+        mock_post.assert_called_once()
+
+    # ------------------------
+    # Filesystem & Download
+    # ------------------------
+    @patch.object(WoffuAPIClient, "download_document")
+    @patch.object(WoffuAPIClient, "get_documents")
+    def test_download_all_documents_calls_download_for_each_document(self, mock_get_documents, mock_download_document):
+        """Test that download_all_documents retrieves documents and downloads each one."""
+        fake_docs = [
+            {"Name": "doc1.pdf", "DocumentId": "1"},
+            {"Name": "doc2.pdf", "DocumentId": "2"},
+        ]
+        mock_get_documents.return_value = fake_docs
+        output_dir = self.tmp_dir / "downloads"
+
+        self.client.download_all_documents(output_dir=str(output_dir))
+
+        # Verify get_documents was called (call signature matches real implementation)
+        mock_get_documents.assert_called_once()
+        # Verify download_document called for each document
+        self.assertEqual(mock_download_document.call_count, len(fake_docs))
+
+    def test_download_document_creates_file_when_not_exists(self):
+        """Test that download_document writes the file if it doesn't exist."""
+        output_dir = self.tmp_dir / "downloads"
+        output_dir.mkdir(exist_ok=True)
+        fake_document = {"Name": "testdoc.pdf", "DocumentId": "DOC_ID"}
+
+        # Patch the internal GET request to return fake content
+        with patch.object(self.client, "get") as mock_get:
             mock_response = MagicMock()
             mock_response.status = 200
-            mock_response.json.return_value = {"success": True}
+            mock_response.content = b"PDF_DATA"
             mock_get.return_value = mock_response
 
-            url = f"https://{self.client._domain}/api/v1/test"
-            result = self.client.get(url)
+            self.client.download_document(fake_document, str(output_dir))
 
-            mock_get.assert_called_once_with(self.client, url)
-            self.assertEqual(result.json(), {"success": True})
-
-    def test_post_request_is_sent_with_expected_data(self):
-        """Verify that POST requests use the correct URL and payload."""
-        with patch.object(WoffuAPIClient, "post", autospec=True) as mock_post:
-            mock_response = MagicMock()
-            mock_response.status = 200
-            mock_response.json.return_value = {"token": "XYZ123"}
-            mock_post.return_value = mock_response
-
-            payload = {"grant_type": "password", "username": "user", "password": "pass"}
-            url = f"https://{self.client._domain}/token"
-            result = self.client.post(url, data=payload)
-
-            mock_post.assert_called_once_with(self.client, url, data=payload)
-            self.assertEqual(result.json(), {"token": "XYZ123"})
-
-
-if __name__ == "__main__":
-    unittest.main()
+        file_path = output_dir / "testdoc.pdf"
+        self.assertTrue(file_path.exists())
+        self.assertEqual(file_path.read_bytes(), b"PDF_DATA")

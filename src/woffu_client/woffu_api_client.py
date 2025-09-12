@@ -245,8 +245,8 @@ class WoffuAPIClient(Session):
         if document_response.status == 200:
             logger.info(f"Saving '{document['Name']}'...")
             #with open(file=document_path, mode='bw') as f:
-            #    f.write(document_response.content())
-            document_path.write_bytes(document_response.content())
+            #    f.write(document_response.content)
+            document_path.write_bytes(document_response.content)
 
     def download_all_documents(self, output_dir: str = "") -> None:
         """
