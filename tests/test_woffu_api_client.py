@@ -148,6 +148,33 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
         self.client.download_document(fake_document, str(output_dir))
         self.assertFalse((output_dir / "fail.pdf").exists())
 
+    @patch.object(WoffuAPIClient, "get")
+    @patch("src.woffu_client.woffu_api_client.logger")
+    def test_download_document_http_exception_skips_file(self, mock_logger, mock_get):
+        """download_document skips writing file on GET exception"""
+        output_dir = self.tmp_dir / "downloads"
+        output_dir.mkdir(exist_ok=True)
+        fake_document = {"Name": "fail.pdf", "DocumentId": "DOC_ID"}
+        mock_get.side_effect = Exception("GET failed")
+        self.client.download_document(fake_document, str(output_dir))
+        self.assertFalse((output_dir / "fail.pdf").exists())
+        mock_logger.error.assert_called_once()
+
+    @patch.object(WoffuAPIClient, "download_document")
+    @patch.object(WoffuAPIClient, "get_documents")
+    def test_download_all_documents_mixed_failures(self, mock_get_docs, mock_download):
+        """download_all_documents continues if some documents fail"""
+        docs = [{"Name": "a.pdf", "DocumentId": "1"}, {"Name": "b.pdf", "DocumentId": "2"}]
+        mock_get_docs.return_value = docs
+
+        def fail_second(*args, **kwargs):
+            doc = kwargs.get("document") or (args[0] if args else None)
+            if doc["Name"] == "b.pdf":
+                raise Exception("Download failed")
+
+        mock_download.side_effect = fail_second
+        self.client.download_all_documents()
+        self.assertEqual(mock_download.call_count, 2)
 
     # --------------------------
     # Possible duplicated tests?
@@ -247,11 +274,6 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
     # --------------------------
     # Possible duplicated tests?
     # --------------------------
-
-
-
-
-
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_only_running_clock(self, mock_get):
         """Test get_status with only_running_clock=True returns correct last sign."""
@@ -376,6 +398,27 @@ class TestWoffuAPIAuth(BaseWoffuAPITest):
         args, kwargs = mock_logger.error.call_args
         self.assertIn("Invalid JSON", args[0])
 
+    @patch.object(WoffuAPIClient, "post")
+    @patch("src.woffu_client.woffu_api_client.logger")
+    def test_retrieve_access_token_http_error_non_200(self, mock_logger, mock_post):
+        """_retrieve_access_token logs and leaves token empty if status != 200"""
+        mock_response = MagicMock(status=403, json=lambda: {})
+        mock_post.return_value = mock_response
+        self.client._token = "OLD"
+        self.client._retrieve_access_token(username="u", password="p")
+        self.assertEqual(self.client._token, "")
+        mock_logger.error.assert_called_once()
+
+    @patch.object(WoffuAPIClient, "post")
+    @patch("src.woffu_client.woffu_api_client.logger")
+    def test_retrieve_access_token_raises_exception_resets_token(self, mock_logger, mock_post):
+        """_retrieve_access_token handles exceptions gracefully and clears token"""
+        mock_post.side_effect = Exception("Network down")
+        self.client._token = "OLD"
+        self.client._retrieve_access_token(username="u", password="p")
+        self.assertEqual(self.client._token, "")
+        mock_logger.error.assert_called_once()
+
     # --------------------------
     # Possible duplicated tests?
     # --------------------------
@@ -443,6 +486,7 @@ class TestWoffuAPICredentialsFile(BaseWoffuAPITest):
 
     def test_load_credentials_missing_file_requests_and_saves(self):
         """_load_credentials triggers _request_credentials and _save_credentials if config missing"""
+        self.client._interactive = True  # prevent sys.exit
         self.client._config_file = Path("non_existing.json")
         with patch.object(self.client, "_request_credentials") as mock_req, \
             patch.object(self.client, "_save_credentials") as mock_save:
@@ -464,6 +508,48 @@ class TestWoffuAPICredentialsFile(BaseWoffuAPITest):
         mock_logger.warning.assert_called_once()
         args, kwargs = mock_logger.warning.call_args
         self.assertIn(f"Config file '{self.client._config_file}' doesn't exist! Requesting authentication token...", args[0])
+
+    @patch("pathlib.Path.open", side_effect=OSError("Can't read file"))
+    def test_load_credentials_file_unreadable_raises(self, mock_open):
+        """_load_credentials handles unreadable config file gracefully"""
+        self.client._interactive = True  # avoid sys.exit()
+        self.client._config_file = Path("/nonexistent/config.json")
+        
+        with self.assertRaises(OSError):
+            self.client._load_credentials()
+
+    def test_load_credentials_non_interactive_no_env_exits(self):
+        """_load_credentials exits if non-interactive and no env vars"""
+        self.client._interactive = False
+        self.client._config_file = Path("non_existing.json")
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(SystemExit):
+                self.client._load_credentials()
+
+    @patch.object(WoffuAPIClient, "_retrieve_access_token")
+    @patch.object(WoffuAPIClient, "_get_domain_user_companyId")
+    @patch.object(WoffuAPIClient, "_save_credentials")
+    def test_load_credentials_non_interactive_with_env_sets_credentials(
+        self, mock_save, mock_domain, mock_token
+    ):
+        """_load_credentials uses WOFFU_USERNAME/WOFFU_PASSWORD if present in env"""
+        with patch.dict(os.environ, {"WOFFU_USERNAME": "env_user", "WOFFU_PASSWORD": "env_pass"}):
+            mock_domain.return_value = None
+            mock_save.return_value = None
+            
+            self.client._config_file = Path("non_existing.json")
+            self.client._load_credentials()
+
+            mock_token.assert_called_once_with(username="env_user", password="env_pass")
+            mock_domain.assert_called_once()
+            mock_save.assert_called_once()
+            self.assertEqual(self.client._username, "env_user")
+
+    @patch("pathlib.Path.open", side_effect=OSError("Cannot write file"))
+    def test_save_credentials_other_oserror(self, mock_open):
+        """_save_credentials handles generic OSError"""
+        with self.assertRaises(OSError):
+            self.client._save_credentials()
 
     # --------------------------
     # Possible duplicated tests?
@@ -537,6 +623,27 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
         mock_presence.return_value = [diary]
         mock_slots.return_value = []
 
+        result = self.client.get_summary_report("2025-09-12", "2025-09-12")
+        self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 0)
+
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_invalid_slot_times(self, mock_slots, mock_presence):
+        """get_summary_report skips diary slots with invalid in/out"""
+        diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": []}
+        mock_presence.return_value = [diary]
+        mock_slots.return_value = [{"in": {"trueDate": "INVALID", "utcTime": "INVALID"},
+                                    "out": {"trueDate": "INVALID", "utcTime": "INVALID"}}]
+        result = self.client.get_summary_report("2025-09-12", "2025-09-12")
+        self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 0)
+
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_missing_hours_key(self, mock_slots, mock_presence):
+        """get_summary_report handles diaryHourTypes missing 'hours' key"""
+        diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": [{"name": "A"}]}
+        mock_presence.return_value = [diary]
+        mock_slots.return_value = []
         result = self.client.get_summary_report("2025-09-12", "2025-09-12")
         self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 0)
 
@@ -620,3 +727,15 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
         total, running = self.client.get_status()
         self.assertTrue(running)
         self.assertIsInstance(total, timedelta)
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_invalid_utc_formats_mixed(self, mock_get):
+        """get_status handles multiple invalid UtcTime formats and computes running correctly"""
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = [
+            {"SignIn": True, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "BAD1"},
+            {"SignIn": False, "TrueDate": "2025-09-12T16:00:00.000", "UtcTime": "BAD2"},
+        ]
+        total, running = self.client.get_status()
+        self.assertIsInstance(total, timedelta)
+        self.assertFalse(running)

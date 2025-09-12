@@ -72,24 +72,34 @@ class WoffuAPIClient(Session):
             return
         
         logger.info("Requesting access token...")
-        token_response = self.post(
-            url=f"{self._woffu_api_url}/token",
-            data = {
-                "grant_type": "password",
-                "username": username,
-                "password": password
-            }
-        )
-        self._token = ""
-        if token_response.status == 200:
-            try:
-                json_data = token_response.json()
-                self._token = json_data.get('access_token', "")
-            except ValueError:
-                logger.error("Invalid JSON received when retrieving access token.")
-                self._token = ""        
-        else:
-            logger.error("Failed to retrieve access token")
+        try:
+            token_response = self.post(
+                url=f"{self._woffu_api_url}/token",
+                data = {
+                    "grant_type": "password",
+                    "username": username,
+                    "password": password
+                }
+            )
+            # self._token = ""
+            # if token_response.status == 200:
+            #     try:
+            #         json_data = token_response.json()
+            #         self._token = json_data.get('access_token', "")
+            #     except ValueError:
+            #         logger.error("Invalid JSON received when retrieving access token.")
+            #         self._token = ""        
+            # else:
+            #     logger.error("Failed to retrieve access token")
+            if token_response.status != 200:
+                self._token = ""
+                logger.error(f"Failed to retrieve access token, status={token_response.status}")
+                return
+            self._token = token_response.json().get("access_token", "")
+
+        except Exception as e:
+            self._token = ""
+            logger.error(f"Exception retrieving token: {e}")
 
     def _save_credentials(self):
         """
