@@ -52,7 +52,6 @@ class HTTPResponse:
                 self._cached_content = self._raw.read()
         return cast(bytes, self._cached_content)
 
-
     def iter_content(self, chunk_size: Optional[int] = 1024) -> Iterator[bytes]:
         if self._raw is None:
             yield b""
@@ -145,7 +144,7 @@ class Session:
         url: str,
         params: Optional[Dict[str, str]] = None,
         data: Optional[Union[dict, str, bytes]] = None,
-        json: Optional[Any] = None,  # <-- added json parameter
+        json: Optional[Any] = None,
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[int] = None,
         retries: Optional[int] = None,

@@ -4,7 +4,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from src.woffu_client.woffu_api_client import WoffuAPIClient
-
+from datetime import timedelta
+import os
+import csv
 
 class TestWoffuAPIClient(unittest.TestCase):
     """Unit tests for WoffuAPIClient focusing on initialization, headers, network, and filesystem."""
@@ -127,3 +129,125 @@ class TestWoffuAPIClient(unittest.TestCase):
         file_path = output_dir / "testdoc.pdf"
         self.assertTrue(file_path.exists())
         self.assertEqual(file_path.read_bytes(), b"PDF_DATA")
+
+    # ------------------------
+    # Additional coverage tests
+    # ------------------------
+    @patch.dict(os.environ, {"WOFFU_USERNAME": "env_user", "WOFFU_PASSWORD": "env_pass"})
+    @patch.object(WoffuAPIClient, "_retrieve_access_token")
+    @patch.object(WoffuAPIClient, "_get_domain_user_companyId")
+    def test_request_credentials_uses_env_vars(self, mock_get_company, mock_retrieve_token):
+        """Test _request_credentials uses environment variables when interactive=False."""
+        client = WoffuAPIClient(interactive=False, config=str(self.creds_file))
+        client._interactive = False
+        client._request_credentials()
+        mock_retrieve_token.assert_called_once_with(username="env_user", password="env_pass")
+        mock_get_company.assert_called_once()
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_documents_returns_documents(self, mock_get):
+        """Test get_documents returns documents from API."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json.return_value = {"Documents": [{"Name": "d1"}, {"Name": "d2"}], "TotalRecords": 2}
+        mock_get.return_value = mock_response
+
+        docs = self.client.get_documents()
+        self.assertEqual(len(docs), 2)
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_documents_returns_empty_when_none(self, mock_get):
+        """Test get_documents returns empty list and logs warning if 'Documents' missing."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json.return_value = {"TotalRecords": 0}
+        mock_get.return_value = mock_response
+
+        docs = self.client.get_documents()
+        self.assertEqual(docs, [])
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_presence_and_workday_slots(self, mock_get):
+        """Test _get_presence, _get_workday_slots, _get_diary_hour_types happy path."""
+        # _get_presence returns diaries
+        diary_data = [{"diarySummaryId": 1, "date": "2025-09-12"}]
+        presence_mock = MagicMock()
+        presence_mock.status = 200
+        presence_mock.json.return_value = {"diaries": diary_data}
+        mock_get.return_value = presence_mock
+
+        diaries = self.client._get_presence()
+        self.assertEqual(diaries, diary_data)
+
+        # _get_diary_hour_types
+        hour_types_mock = MagicMock()
+        hour_types_mock.status = 200
+        hour_types_mock.json.return_value = {"diaryHourTypes": [{"name": "Test", "hours": 1}]}
+        mock_get.return_value = hour_types_mock
+        hour_types = self.client._get_diary_hour_types(date="2025-09-12")
+        self.assertEqual(hour_types, [{"name": "Test", "hours": 1}])
+
+        # _get_workday_slots
+        slots_mock = MagicMock()
+        slots_mock.status = 200
+        slots_mock.json.return_value = {"slots": [{"in": {"trueDate": "2025-09-12", "utcTime": "+0100"}, "out": {"trueDate": "2025-09-12", "utcTime": "+0100"}, "motive": {"hours": 2}}]}
+        mock_get.return_value = slots_mock
+        slots = self.client._get_workday_slots(diary_summary_id=1)
+        self.assertEqual(slots, [{"in": {"trueDate": "2025-09-12", "utcTime": "+0100"}, "out": {"trueDate": "2025-09-12", "utcTime": "+0100"}, "motive": {"hours": 2}}])
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_sign_requests(self, mock_get):
+        """Test get_sign_requests returns data or empty dict on failure."""
+        resp_mock = MagicMock()
+        resp_mock.status = 200
+        resp_mock.json.return_value = {"some": "data"}
+        mock_get.return_value = resp_mock
+
+        result = self.client.get_sign_requests(date="09/12/2025")
+        self.assertEqual(result, {"some": "data"})
+
+        # simulate error
+        resp_mock.status = 404
+        mock_get.return_value = resp_mock
+        result = self.client.get_sign_requests(date="09/12/2025")
+        self.assertEqual(result, {})
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_and_sign(self, mock_get):
+        """Test get_status returns total_time and running_clock, sign sends POST."""
+        # Simulate signs
+        mock_get.return_value.json.return_value = [{"SignIn": True, "TrueDate": "2025-09-12", "UtcTime": "+0100"}]
+        mock_get.return_value.status = 200
+        total, running = self.client.get_status()
+        self.assertIsInstance(total, timedelta)
+        self.assertIsInstance(running, bool)
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_diary_hour_types_summary(self, mock_get):
+        """Test get_diary_hour_types_summary computes hour types over date range."""
+        # simulate _get_diary_hour_types
+        mock_get.return_value.json.return_value = [{"name": "Extr. a compensar", "hours": 2}]
+        mock_get.return_value.status = 200
+        from_date = "2025-09-12"
+        to_date = "2025-09-12"
+        summary = self.client.get_diary_hour_types_summary(from_date=from_date, to_date=to_date)
+        self.assertIn(from_date, summary)
+        self.assertEqual(summary[from_date]["Extr. a compensar"], 2)
+
+    def test_export_summary_to_csv_creates_file(self):
+        """Test export_summary_to_csv writes a CSV file with correct headers."""
+        output_dir = self.tmp_dir / "reports"
+        summary_report = {
+            "2025-09-12": {"work_hours": 8, "Extr. a compensar": 2}
+        }
+
+        self.client.export_summary_to_csv(summary_report=summary_report, output_path=output_dir)
+        # Check file exists
+        files = list(output_dir.glob("woffu_summary_report_from_2025-09-12_to_2025-09-12.csv"))
+        self.assertTrue(len(files) == 1)
+        # Check content
+        with open(files[0], newline="") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+            self.assertEqual(rows[0]["work_hours"], "8")
+            self.assertEqual(rows[0]["Extr. a compensar"], "2")
