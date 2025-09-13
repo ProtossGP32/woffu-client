@@ -26,6 +26,10 @@ on:
       - main
     paths-ignore:
       - 'github/ISSUE_TEMPLATE/*'
+      - 'README.md'
+      - 'LICENSE'
+      - '.gitignore'
+
 
 jobs:
   test:
