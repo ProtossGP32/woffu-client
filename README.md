@@ -9,7 +9,7 @@ Woffu client with access to several endpoints outside their public API, for thos
 
 ## Installation
 
-## PyPI
+### PyPI
 
 The build package is publicly available on PyPI:
 
@@ -17,13 +17,13 @@ The build package is publicly available on PyPI:
 pip install woffu-client
 ```
 
-### Development
+#### Development
 
 ```bash
 pip install -e .
 ```
 
-## Usage:
+## Usage
 
 ```bash
 usage: woffu-cli [-h] [--config CONFIG] [--non-interactive] {download-all-documents,get-status,sign,request-credentials,summary-report} ...
@@ -45,3 +45,7 @@ actions:
                         Request credentials from Woffu. For non-interactive sessions, set username and password as environment variables WOFFU_USERNAME and WOFFU_PASSWORD.
     summary-report      Summary report of work hours for a given time window
 ```
+
+## Disclaimer
+
+This project has been partially coded using AI (ChatGPT) for handling HTTP sessions and responses as well as almost all unit tests. Expect either duplicated tests or code that can be improved; I intend to use static code analysis tools later on to achieve a cleaner code.
