@@ -47,7 +47,9 @@ jobs:
         os: [ubuntu-latest]
         python: ["3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       # Checkout repo so that test code and pyproject.toml are available
 
       - name: Setup Python
@@ -76,7 +78,42 @@ jobs:
           pip install ".[dev]"
 
       - name: Run tests
-        run: pytest -v --maxfail=1 --disable-warnings
+        run: pytest -v --maxfail=1 --disable-warnings --junitxml coverage/report.xml --cov-report term --cov-report xml:coverage/coverage.xml --cov=. tests
+
+      - name: Upload coverage reports - Only for Python 3.11
+        if: ${{ matrix.python == '3.11' }}
+        uses: actions/upload-artifact@v4
+        with:
+          # Use unique artifact names per OS/Python version to avoid conflicts
+          name: 'coverage'
+          path: 'coverage/*.xml'
+          if-no-files-found: warn
+          overwrite: true
+
+  sonarqube:
+    name: Sonarqube coverage
+    needs: test
+    runs-on: self-hosted
+    # Container is required for self-hosted runners
+    container:
+      image: ubuntu:latest
+    steps:
+      # Required step for self-hosted instances running job on container
+      - name: Install OS dependencies
+        run: |
+          apt-get update && apt-get install -y curl unzip git
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage
+          path: coverage
+      - uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
   set-version:
     name: Set version from tag
