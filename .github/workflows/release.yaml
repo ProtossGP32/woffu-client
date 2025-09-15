@@ -98,12 +98,14 @@ jobs:
     container:
       image: ubuntu:latest
     steps:
+      - name: Install OS dependencies
+        run: |
+          apt-get update && apt-get install -y curl unzip git
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Install OS dependencies
-        run: |
-          apt-get update && apt-get install -y curl unzip
+      - name: DEBUG - does '.git' folder exist?
+        run: ls -la
       - name: Download coverage artifacts
         uses: actions/download-artifact@v4
         with:
