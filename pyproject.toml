@@ -37,7 +37,7 @@ where = ["src"]
 branch = true
 omit = [
     # Omit test directory
-    "./tests/*"
+    #"./tests/*"
 ]
 
 [tool.coverage.report]
