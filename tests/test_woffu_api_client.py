@@ -173,7 +173,7 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
         def fail_on_second(*args, **kwargs):
             doc: Optional[Dict] = kwargs.get("document") or (args[0] if args else None)
             if doc is not None and doc["Name"] == "b.pdf":
-                raise Exception("Download failed")
+                raise ValueError("Download failed")
 
         mock_download.side_effect = fail_on_second
         self.client.download_all_documents()
@@ -197,7 +197,7 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
 
         # ✅ Verify log recorded HTTP failure
         mock_logger.error.assert_called_once()
-        args, kwargs = mock_logger.error.call_args
+        args, _ = mock_logger.error.call_args
         self.assertIn(f"Failed to download '{fake_document['Name']}'", args[0])
 
     @patch.object(WoffuAPIClient, "get_documents")
@@ -220,7 +220,7 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
         def fail_on_second(*args, **kwargs):
             doc: Optional[Dict] = kwargs.get("document") or (args[0] if args else None)
             if doc is not None and doc["Name"] == "b.pdf":
-                raise Exception("Download failed")
+                raise ValueError("Download failed")
 
         mock_download.side_effect = fail_on_second
 
@@ -367,7 +367,7 @@ class TestWoffuAPIAuth(BaseWoffuAPITest):
 
         # ✅ Verify log recorded HTTP failure
         mock_logger.error.assert_called_once()
-        args, kwargs = mock_logger.error.call_args
+        args, _ = mock_logger.error.call_args
         self.assertIn("Failed to retrieve access token", args[0])
 
     @patch.object(WoffuAPIClient, "post")
@@ -390,7 +390,6 @@ class TestWoffuAPIAuth(BaseWoffuAPITest):
         mock_response.json.side_effect = ValueError("Invalid JSON")
         mock_post.return_value = mock_response
 
-        old_token = self.client._token
         self.client._retrieve_access_token(username="u", password="p")
 
         # Token must be reset to empty string
@@ -398,7 +397,7 @@ class TestWoffuAPIAuth(BaseWoffuAPITest):
 
         # ✅ Assert logging happened
         mock_logger.error.assert_called_once()
-        args, kwargs = mock_logger.error.call_args
+        args, _ = mock_logger.error.call_args
         self.assertIn("Invalid JSON", args[0])
 
     @patch.object(WoffuAPIClient, "post")
@@ -448,7 +447,7 @@ class TestWoffuAPIRequestCredentials(BaseWoffuAPITest):
 
         # ✅ Verify log recorded HTTP failure
         mock_logger.error.assert_called_once()
-        args, kwargs = mock_logger.error.call_args
+        args, _ = mock_logger.error.call_args
         self.assertIn("Can't request token in non-interactive method without username and password. Please provide them in WOFFU_USERNAME and WOFFU_PASSWORD.", args[0])
 
     @patch("builtins.input", return_value="testuser")
@@ -531,7 +530,7 @@ class TestWoffuAPICredentialsFile(BaseWoffuAPITest):
         mock_save.assert_called_once()
         # ✅ Verify log recorded HTTP failure
         mock_logger.warning.assert_called_once()
-        args, kwargs = mock_logger.warning.call_args
+        args, _ = mock_logger.warning.call_args
         self.assertIn(f"Config file '{self.client._config_file}' doesn't exist! Requesting authentication token...", args[0])
 
     @patch("pathlib.Path.open", side_effect=OSError("Can't read file"))
@@ -576,7 +575,7 @@ class TestWoffuAPICredentialsFile(BaseWoffuAPITest):
 
         # ✅ Verify log recorded HTTP failure
         mock_logger.info.assert_called_once()
-        args, kwargs = mock_logger.info.call_args
+        args, _ = mock_logger.info.call_args
         self.assertIn(f"✅ Credentials stored in: {self.client._config_file}", args[0])
 
     @patch("pathlib.Path.open", side_effect=OSError("Cannot write file"))
@@ -618,7 +617,7 @@ class TestWoffuAPIPresenceWorkday(BaseWoffuAPITest):
 
         # ✅ Verify log recorded HTTP failure
         mock_logger.error.assert_called_once()
-        args, kwargs = mock_logger.error.call_args
+        args, _ = mock_logger.error.call_args
         self.assertIn("presence", args[0])
 
     @patch.object(WoffuAPIClient, "get")
@@ -631,7 +630,7 @@ class TestWoffuAPIPresenceWorkday(BaseWoffuAPITest):
 
         # ✅ Verify log recorded HTTP failure
         mock_logger.error.assert_called_once()
-        args, kwargs = mock_logger.error.call_args
+        args, _ = mock_logger.error.call_args
         self.assertIn("workday slots", args[0])
     
 # -------------------------------
