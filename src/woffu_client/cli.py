@@ -143,8 +143,6 @@ def main() -> None:
                 )
             except Exception as e:
                 print(f"❌ Error retrieving summary report: {e}", file=sys.stderr)
-        case _:
-            print(f"❌ Unknown command: {args.command}", file=sys.stderr)
     
 
 if __name__ == "__main__":
