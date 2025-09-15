@@ -33,7 +33,7 @@ on:
 
 jobs:
   test:
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && !github.event.pull_request)
+    if: github.event_name == 'pull_request' || github.event.pull_request == null
     name: Test ${{ matrix.os }} / Python ${{ matrix.python }}
     #runs-on: [ self-hosted, "${{ matrix.os }}" ]
     runs-on: self-hosted
