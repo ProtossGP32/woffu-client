@@ -18,7 +18,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-# TODO: Make log level configurable
 logger.setLevel("INFO")
 
 DEFAULT_CONFIG = Path.home() / ".config/woffu/woffu_auth.json"
@@ -81,16 +80,7 @@ class WoffuAPIClient(Session):
                     "password": password
                 }
             )
-            # self._token = ""
-            # if token_response.status == 200:
-            #     try:
-            #         json_data = token_response.json()
-            #         self._token = json_data.get('access_token', "")
-            #     except ValueError:
-            #         logger.error("Invalid JSON received when retrieving access token.")
-            #         self._token = ""        
-            # else:
-            #     logger.error("Failed to retrieve access token")
+
             if token_response.status != 200:
                 self._token = ""
                 logger.error(f"Failed to retrieve access token, status={token_response.status}")
@@ -198,7 +188,8 @@ class WoffuAPIClient(Session):
         self._config_file: Path = Path(kwargs["config"]) if "config" in kwargs else DEFAULT_CONFIG
         self._documents_path : Path = Path(kwargs["documents_path"]) if "documents_path" in kwargs else DEFAULT_DOCS_DIR
         self._interactive: bool = kwargs["interactive"] if "interactive" in kwargs else False
-
+        # Set logger level
+        logger.setLevel(kwargs.get("log_level", "INFO")) 
         # Initialize the parent class
         super().__init__()
 
@@ -261,8 +252,6 @@ class WoffuAPIClient(Session):
         # Save the document
         if document_response.status == 200:
             logger.info(f"Saving '{document['Name']}'...")
-            #with open(file=document_path, mode='bw') as f:
-            #    f.write(document_response.content)
             document_path.write_bytes(document_response.content)
         else:
             logger.error(f"Failed to download '{document['Name']}'")
@@ -361,8 +350,6 @@ class WoffuAPIClient(Session):
         params:
         date: str. Sign requests date. WARNING! Date format must be "mm/dd/YYYY", this is different from the rest of queries.
         """
-        # TODO: unify date argument to the same format as the rest of methods and reformat it before sending the GET request
-
         sign_motives_response = self.get(
             url=f"https://{self._domain}/api/svc/core/diary/user/requests",
             params={
@@ -445,13 +432,12 @@ class WoffuAPIClient(Session):
         logger.info(f"You're currently signed {'in' if running_clock else 'out'}.")
         return total_time, running_clock
 
-    def sign(self, type: str = "", motive: str = "") -> HTTPResponse | None:
+    def sign(self, type: str = "") -> HTTPResponse | None:
         """
         Sign in/out on Woffu
         params:
         type: str. Can be "in", "out" or "empty". If empty, it will sign in/out without checking the current status.
         """
-        # TODO: Include the sign-in reason in the sign-in ("Working from home", "Office", etc...)
         # Get current sign status
         _, signed_in = self.get_status(only_running_clock=True)
 
@@ -462,20 +448,18 @@ class WoffuAPIClient(Session):
                 if signed_in == requested_sign:
                     logger.warning(f"User is already signed {type}, skipping new sign.")
                     return
-            case _:
-                pass
 
         # Send sign request
         logger.info("Sending sign request...")
-        # Get the current datetime with local timezone
-        current_time = datetime.now(tz=self._localzone)
+        # # Get the current datetime with local timezone
+        # current_time = datetime.now(tz=self._localzone)
 
-        # Get the actual time offset in minutes
-        utc_offset = current_time.utcoffset()
-        if utc_offset:
-            timezone_offset =- int(utc_offset.total_seconds() / 60)
-        else:
-            timezone_offset = 0
+        # # Get the actual time offset in minutes
+        # utc_offset = current_time.utcoffset()
+        # if utc_offset:
+        #     timezone_offset = -(int(utc_offset.total_seconds() / 60))
+        # else:
+        #     timezone_offset = 0
         
         return self.post(
             url=f"https://{self._domain}/api/svc/signs/signs",
@@ -531,9 +515,7 @@ class WoffuAPIClient(Session):
         diaries = self._get_presence(from_date=from_date, to_date=to_date)
         summary_report = {}
 
-        current_time = datetime.now(tz=self._localzone)
-
-        logger.info(f"Retrieving workday slots and extra hours...")
+        logger.info("Retrieving workday slots and extra hours...")
         for diary in diaries:
             summary_report[diary['date']] = {}
             event_report = summary_report[diary['date']]
