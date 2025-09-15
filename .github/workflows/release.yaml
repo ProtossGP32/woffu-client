@@ -98,14 +98,13 @@ jobs:
     container:
       image: ubuntu:latest
     steps:
+      # Required step for self-hosted instances running job on container
       - name: Install OS dependencies
         run: |
           apt-get update && apt-get install -y curl unzip git
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: DEBUG - does '.git' folder exist?
-        run: ls -la
       - name: Download coverage artifacts
         uses: actions/download-artifact@v4
         with:
