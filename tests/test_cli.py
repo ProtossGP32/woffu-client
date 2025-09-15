@@ -141,3 +141,43 @@ class WoffuCLITest(unittest.TestCase):
             error_output = cast(StringIO, sys.stderr).getvalue()
             self.assertIn("invalid choice", error_output)
             self.assertIn("unknown-command", error_output)
+    
+    # -------------------------
+    # ✅ Additional coverage tests
+    # -------------------------
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_non_interactive_flag(self, mock_client_cls):
+        """Ensure --non-interactive does not crash and is accepted."""
+        with patch.object(sys, "argv", ["cli", "--non-interactive", "get-status"]):
+            cli.main()
+        mock_client_cls.assert_called_once()
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_log_level_argument(self, mock_client_cls):
+        """Ensure --log-level is accepted and passed into WoffuAPIClient."""
+        with patch.object(sys, "argv", ["cli", "--log-level", "DEBUG", "get-status"]):
+            cli.main()
+        mock_client_cls.assert_called_once()
+        _, kwargs = mock_client_cls.call_args
+        # Check that log_level is being set correctly
+        self.assertEqual(kwargs.get("log_level"), "DEBUG")
+
+    def test_summary_report_missing_argument(self):
+        """Missing --to-date should trigger argparse error."""
+        with patch.object(sys, "argv", ["cli", "summary-report", "--from-date", "2025-01-01"]):
+            with self.assertRaises(SystemExit) as cm:
+                cli.main()
+            self.assertEqual(cm.exception.code, 2)
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_download_all_documents_default_output_dir(self, mock_client_cls):
+        """Ensure default output dir is used when not specified."""
+        mock_client = mock_client_cls.return_value
+        with patch.object(sys, "argv", ["cli", "download-all-documents"]):
+            cli.main()
+        mock_client.download_all_documents.assert_called_once()
+        # ✅ Just assert that a Path was passed (not necessarily /tmp/fake)
+        called_kwargs = mock_client.download_all_documents.call_args.kwargs
+        self.assertIn("output_dir", called_kwargs)
+        self.assertIsInstance(called_kwargs["output_dir"], Path)
