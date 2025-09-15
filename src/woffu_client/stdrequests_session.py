@@ -205,7 +205,7 @@ class Session:
                 )
                 raw_resp = self.opener.open(req, timeout=timeout)
                 return HTTPResponse(raw_resp, raw_resp.getcode(), dict(raw_resp.getheaders()), stream=stream)
-            except (HTTPError, URLError, OSError) as e:
+            except (URLError) as e:
                 last_exc = e
                 if isinstance(e, HTTPError):
                     raw_resp = cast(Any, e)

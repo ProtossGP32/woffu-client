@@ -26,8 +26,16 @@ def main() -> None:
         "--non-interactive",
         required=False,
         action='store_true',
-        help=f"Set session as non-interactive",
+        help="Set session as non-interactive",
         default=False
+    )
+
+    parser.add_argument(
+        "--log-level",
+        required=False,
+        type=str,
+        help="Set log level",
+        default="INFO"
     )
 
     subparsers = parser.add_subparsers(title="actions", dest="command", required=True)
@@ -44,7 +52,7 @@ def main() -> None:
     )
 
     # ---- get_status ----
-    status_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "get-status", help="Get current status and current day's total amount of worked hours"
     )
 
@@ -61,7 +69,7 @@ def main() -> None:
     )
     
     # ---- get_status ----
-    status_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "request-credentials", help="Request credentials from Woffu. For non-interactive sessions, set username and password as environment variables WOFFU_USERNAME and WOFFU_PASSWORD."
     )
 
@@ -95,7 +103,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # Instantiate client
-    client = WoffuAPIClient(config=args.config, interactive=not args.non_interactive)
+    client = WoffuAPIClient(config=args.config, interactive=not args.non_interactive, log_level=args.log_level)
     match args.command:
         case "download-all-documents":
             try:
@@ -107,12 +115,12 @@ def main() -> None:
                 sys.exit(1)
         case "get-status":
             try:
-                worked_hours, running_status = client.get_status()
+                client.get_status()
             except Exception as e:
                 print(f"❌ Error retrieving status: {e}", file=sys.stderr)
         case "sign":
             try:
-                _ = client.sign(type=args.sign_type)
+                client.sign(type=args.sign_type)
             except Exception as e:
                 print(f"❌ Error sending sign command: {e}", file=sys.stderr)
         case "request-credentials":
