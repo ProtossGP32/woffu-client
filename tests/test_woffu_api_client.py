@@ -723,13 +723,13 @@ class TestWoffuAPIPresenceWorkday(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "get")
     @patch("src.woffu_client.woffu_api_client.logger")
-    def test_get_presence_http_error_returns_empty_dict(
+    def test_get_presence_http_error_returns_empty_list(
         self, mock_logger, mock_get,
     ):
-        """_get_presence returns {} if HTTP status != 200."""
+        """_get_presence returns [] if HTTP status != 200."""
         mock_get.return_value.status = 500
         result = self.client._get_presence("2025-09-12", "2025-09-12")
-        self.assertEqual(result, {})
+        self.assertEqual(result, [])
 
         # ✅ Verify log recorded HTTP failure
         mock_logger.error.assert_called_once()
@@ -741,10 +741,10 @@ class TestWoffuAPIPresenceWorkday(BaseWoffuAPITest):
     def test_get_workday_slots_http_error_returns_empty_dict(
         self, mock_logger, mock_get,
     ):
-        """_get_workday_slots returns {} if HTTP status != 200."""
+        """_get_workday_slots returns [] if HTTP status != 200."""
         mock_get.return_value.status = 500
         result = self.client._get_workday_slots(123)
-        self.assertEqual(result, {})
+        self.assertEqual(result, [])
 
         # ✅ Verify log recorded HTTP failure
         mock_logger.error.assert_called_once()

@@ -4,6 +4,7 @@
 [![PyPI - Version](https://img.shields.io/pypi/v/woffu-client?logo=pypi)](https://pypi.org/project/woffu-client/)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/woffu-client?logo=pypi)
 ![PyPI - License](https://img.shields.io/pypi/l/woffu-client)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/ProtossGP32/woffu-client/main.svg)](https://results.pre-commit.ci/latest/github/ProtossGP32/woffu-client/main)
 
 Woffu client with access to several endpoints outside their public API, for those users without access to a Woffu API key.
 

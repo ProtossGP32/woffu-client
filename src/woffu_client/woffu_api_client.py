@@ -293,7 +293,7 @@ in the documents folder, not downloading again",
 
     def _get_presence(
         self, from_date: str = "", to_date: str = "", page_size: int = 1000,
-    ) -> dict:
+    ) -> list:
         """Return the presence summary of a user \
         within the provided time window.
 
@@ -329,13 +329,13 @@ in the documents folder, not downloading again",
         )
 
         if hours_response.status == 200:
-            return hours_response.json().get("diaries", {})
+            return hours_response.json().get("diaries", [])
 
         logger.error(
             f"Can't retrieve presence for the time period \
 {from_date} - {to_date}!",
         )
-        return {}
+        return []
 
     def _get_diary_hour_types(self, date: str) -> dict:
         """Return the hour types' summary for a given date."""
@@ -357,7 +357,7 @@ diariesquery/diarysumaries/workday/diaryhourtypes",
             else {}
         )
 
-    def _get_workday_slots(self, diary_summary_id: int) -> dict:
+    def _get_workday_slots(self, diary_summary_id: int) -> list:
         """
         Return the workday slots for a given day.
 
@@ -372,13 +372,13 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
         )
 
         if workday_slots_response.status == 200:
-            return workday_slots_response.json().get("slots", {})
+            return workday_slots_response.json().get("slots", [])
 
         logger.error(
             f"Can't retrieve workday slots for diary entry \
 {diary_summary_id}!",
         )
-        return {}
+        return []
 
     def get_sign_requests(self, date: str) -> dict | list:
         """
@@ -588,102 +588,109 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
         return hour_types_summary
 
     def get_summary_report(
-        self, from_date: str = "", to_date: str = "",
+        self, from_date: str = "",
+        to_date: str = "",
     ) -> dict:
-        """
-        Generate a summary report.
-
-        Report is based on the information provided by the Presence endpoint.
-        """
-        diaries = self._get_presence(from_date=from_date, to_date=to_date)
-        summary_report = {}
-
+        """Generate a summary report based on Presence endpoint data."""
+        diaries: list = self._get_presence(
+            from_date=from_date, to_date=to_date,
+        )
         logger.info("Retrieving workday slots and extra hours...")
+
+        summary_report = {}
         for diary in diaries:
-            summary_report[diary["date"]] = {}
-            event_report = summary_report[diary["date"]]
-
-            diary_summary_id = diary["diarySummaryId"]
-
-            # Retrieve diary slots
-            slots = self._get_workday_slots(diary_summary_id=diary_summary_id)
-
-            total_time: float = 0.0
-
-            for slot in slots:
-                if slot and "motive" in slot and slot["motive"]:
-                    total_time += slot["motive"]["hours"]
-                else:
-                    logger.info(
-                        f"Slot of date {diary['date']} doesn't have motive.\
-Using `in` and `out` keys instead...",
-                    )
-                    try:
-                        in_date = slot["in"]["trueDate"]
-                        out_date = slot["out"]["trueDate"]
-
-                        # Parse UTC offsets safely
-                        in_utc_parts = slot["in"]["utcTime"].split(" ")
-                        out_utc_parts = slot["out"]["utcTime"].split(" ")
-
-                        if len(in_utc_parts) < 2 or len(out_utc_parts) < 2:
-                            logger.warning(
-                                f"Skipping slot with invalid UTC times:\
-in='{slot['in']['utcTime']}', out='{slot['out']['utcTime']}'",
-                            )
-                            continue
-
-                        in_utc_offset = f"{in_utc_parts[1].zfill(3)}00"
-                        out_utc_offset = f"{out_utc_parts[1].zfill(3)}00"
-
-                        in_date_timezoned = f"{in_date}{in_utc_offset}"
-                        out_date_timezoned = f"{out_date}{out_utc_offset}"
-
-                        in_dt = datetime.strptime(
-                            in_date_timezoned,
-                            f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z",
-                        )
-                        out_dt = datetime.strptime(
-                            out_date_timezoned,
-                            f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z",
-                        )
-
-                        total_time += (out_dt - in_dt).total_seconds() / 3600
-
-                    except Exception as e:
-                        logger.warning(
-                            f"Skipping slot due to parsing error: {e}",
-                        )
-                        continue
-
-            event_report["work_hours"] = total_time
-
-            # Retrieve the other hour types
-            if "diaryHourTypes" in diary and diary["diaryHourTypes"]:
-                for hour_type in diary["diaryHourTypes"]:
-                    hour_type_id = hour_type.get("hourTypeId", None)
-                    if hour_type_id is None:
-                        logger.warning(
-                            f"Skipping hour type with missing 'hourTypeId'\
-in diary for date {diary['date']}",
-                        )
-                        continue
-
-                    hour_type_name = (
-                        self.hour_types_dict[hour_type_id]
-                        if hour_type_id in self.hour_types_dict
-                        else hour_type_id
-                    )
-                    if hour_type_name not in event_report:
-                        event_report[hour_type_name] = hour_type.get(
-                            "hours", 0,
-                        )
-                    else:
-                        event_report[hour_type_name] += hour_type.get(
-                            "hours", 0,
-                        )
+            date = diary["date"]
+            summary_report[date] = self._build_event_report(diary)
 
         return summary_report
+
+    def _build_event_report(self, diary: dict) -> dict:
+        """Build the report for a single diary entry."""
+        event_report: dict = {}
+        diary_summary_id = diary["diarySummaryId"]
+
+        # Work hours from slots
+        slots = self._get_workday_slots(diary_summary_id=diary_summary_id)
+        event_report["work_hours"] = self._calculate_total_hours(
+            slots, diary["date"],
+        )
+
+        # Hour types summary
+        self._aggregate_hour_types(
+            event_report, diary.get(
+                "diaryHourTypes", [],
+            ), diary["date"],
+        )
+
+        return event_report
+
+    def _calculate_total_hours(self, slots: list, date: str) -> float:
+        """Calculate total worked hours from a list of slots."""
+        total_time = 0.0
+        for slot in slots:
+            try:
+                total_time += self._get_slot_hours(slot, date)
+            except Exception as e:
+                logger.warning(f"Skipping slot due to parsing error: {e}")
+        return total_time
+
+    def _get_slot_hours(self, slot: dict, date: str) -> float:
+        """Return the hours for a single slot, using motive if available."""
+        if slot and slot.get("motive"):
+            return slot["motive"]["hours"]
+
+        logger.info(
+            f"Slot of date {date} doesn't have motive.\
+Using `in`/`out` keys...",
+        )
+        return self._calculate_hours_from_in_out(slot)
+
+    def _calculate_hours_from_in_out(self, slot: dict) -> float:
+        """Calculate hours from 'in' and 'out' keys of a slot."""
+        in_utc_parts = slot["in"]["utcTime"].split(" ")
+        out_utc_parts = slot["out"]["utcTime"].split(" ")
+        if len(in_utc_parts) < 2 or len(out_utc_parts) < 2:
+            logger.warning(
+                f"Skipping slot with invalid UTC times: "
+                f"in='{slot['in']['utcTime']}'"
+                f"out='{slot['out']['utcTime']}'",
+            )
+            return 0.0
+
+        in_dt = self._parse_datetime(slot["in"]["trueDate"], in_utc_parts[1])
+        out_dt = self._parse_datetime(
+            slot["out"]["trueDate"], out_utc_parts[1],
+        )
+        return (out_dt - in_dt).total_seconds() / 3600
+
+    def _parse_datetime(self, date_str: str, utc_offset: str) -> datetime:
+        """Parse date string and UTC offset safely into datetime."""
+        date_timezoned = f"{date_str}{utc_offset.zfill(3)}00"
+        return datetime.strptime(
+            date_timezoned,
+            f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z",
+        )
+
+    def _aggregate_hour_types(
+        self, event_report: dict,
+        hour_types: list, date: str,
+    ):
+        """Aggregate hour types into the event report."""
+        for hour_type in hour_types:
+            hour_type_id = hour_type.get("hourTypeId")
+            if hour_type_id is None:
+                logger.warning(
+                    f"Skipping hour type with missing 'hourTypeId' \
+in diary for date {date}",
+                )
+                continue
+
+            hour_type_name = self.hour_types_dict.get(
+                hour_type_id, hour_type_id,
+            )
+            event_report[hour_type_name] = event_report.get(
+                hour_type_name, 0,
+            ) + hour_type.get("hours", 0)
 
     def export_summary_to_csv(
         self,
