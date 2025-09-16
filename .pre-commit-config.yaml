@@ -1,0 +1,67 @@
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/asottile/add-trailing-comma
+    rev: v3.2.0
+    hooks:
+    -   id: add-trailing-comma
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0  # this is optional, use `pre-commit autoupdate` to get the latest rev!
+    hooks:
+      - id: check-yaml
+        # args: [
+        #   # Workaround for GitLab CI '!reference' tag not providing a constructor, but then checks are syntax-only, not linting
+        #   "--unsafe"
+        # ]
+      - id: debug-statements
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  # # Black - Python code formatter
+  # Disabled due to incompability with reorder-python-imports
+  # - repo: https://github.com/psf/black
+  #   rev: 24.4.2
+  #   hooks:
+  #     - id: black
+  #       args: [--line-length=79]
+
+  # Workaround to Black issue: use autopep8
+  - repo: https://github.com/hhatto/autopep8
+    rev: v2.3.2
+    hooks:
+    -   id: autopep8
+
+  # Setup config formatter
+  - repo: https://github.com/asottile/setup-cfg-fmt
+    rev: v2.8.0
+    hooks:
+      - id: setup-cfg-fmt
+
+  # Reorder Python imports
+  - repo: https://github.com/asottile/reorder-python-imports
+    rev: v3.15.0
+    hooks:
+      - id: reorder-python-imports
+        args: [
+          --application-directories, '.:src',
+          --py38-plus,
+          --add-import, 'from __future__ import annotations',
+        ]
+
+  # Flake8 - Python linting
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.3.0
+    hooks:
+      - id: flake8
+        additional_dependencies: [flake8-docstrings]
+
+  # Markdown lint
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.45.0
+    hooks:
+    - id: markdownlint
+      args: [
+        --fix,
+        --disable,
+        MD013,
+        --
+      ]

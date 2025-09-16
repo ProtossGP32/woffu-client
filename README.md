@@ -13,7 +13,7 @@ Woffu client with access to several endpoints outside their public API, for thos
 
 The build package is publicly available on PyPI:
 
-```
+```bash
 pip install woffu-client
 ```
 
