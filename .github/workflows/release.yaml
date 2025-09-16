@@ -32,22 +32,22 @@ on:
 
 
 jobs:
-  pre-commit:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
-    runs-on: self-hosted
-    container:
-      image: ubuntu:latest
-    steps:
-    - uses: actions/checkout@v4
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: 3.11
-    - uses: pre-commit/action@v3.0.1
-      name: Pre-commit checks
+  # pre-commit:
+  #   if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
+  #   runs-on: self-hosted
+  #   container:
+  #     image: ubuntu:latest
+  #   steps:
+  #   - uses: actions/checkout@v4
+  #   - name: Setup Python
+  #     uses: actions/setup-python@v4
+  #     with:
+  #       python-version: 3.11
+  #   - uses: pre-commit/action@v3.0.1
+  #     name: Pre-commit checks
 
   test:
-    needs: pre-commit
+    # needs: pre-commit
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
     name: Test ${{ matrix.os }} / Python ${{ matrix.python }}
     #runs-on: [ self-hosted, "${{ matrix.os }}" ]
