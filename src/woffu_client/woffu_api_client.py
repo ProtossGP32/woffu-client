@@ -738,7 +738,7 @@ in diary for date {diary['date']}",
         # Prepare the CSV filename
         csv_filename = (
             output_path
-            / f"woffu_summary_report_from_{
+            / f"""woffu_summary_report_from_{
                 min_date.strftime(
                     DEFAULT_DATE_FORMAT
                 )
@@ -746,7 +746,7 @@ in diary for date {diary['date']}",
                 max_date.strftime(
                     DEFAULT_DATE_FORMAT
                 )
-            }.csv"
+            }.csv"""
         )
         csv_filename.parent.mkdir(parents=True, exist_ok=True)
 
