@@ -1,18 +1,24 @@
+"""Tests for WoffuAPIClient class."""
+from __future__ import annotations
+
 import json
-import shutil
-import unittest
-import tempfile
-from pathlib import Path
-from unittest.mock import patch, MagicMock
-from datetime import timedelta
-from src.woffu_client.woffu_api_client import WoffuAPIClient
 import os
-from typing import Optional, Dict
+import shutil
+import tempfile
+import unittest
+from datetime import timedelta
 from io import StringIO
-import pytest
+from pathlib import Path
+from typing import Dict
+from typing import Optional
+from unittest.mock import MagicMock
+from unittest.mock import patch
+
+from src.woffu_client.woffu_api_client import WoffuAPIClient
+
 
 class BaseWoffuAPITest(unittest.TestCase):
-    """Base class for tests that need temporary credentials and a WoffuAPIClient."""
+    """Base class for other WoffuAPIClient test classes."""
 
     def setUp(self):
         """Create a temporary credentials file and initialize client."""
@@ -23,7 +29,7 @@ class BaseWoffuAPITest(unittest.TestCase):
             "username": "test_user",
             "token": "FAKE_TOKEN",
             "user_id": "12345",
-            "company_id": "99999"
+            "company_id": "99999",
         }
         self.creds_file.write_text(json.dumps(creds))
         self.client = WoffuAPIClient(config=self.creds_file)
@@ -33,10 +39,13 @@ class BaseWoffuAPITest(unittest.TestCase):
         if self.tmp_dir.exists():
             shutil.rmtree(self.tmp_dir)
 
+
 class TestWoffuAPIClient(BaseWoffuAPITest):
+    """Test class for WoffuAPIClient initialization."""
 
     def test_client_initialization_loads_credentials(self):
-        """Verify that client loads domain, username, token, and sets headers from config file."""
+        """Verify that client loads domain, username, token, \
+and sets headers from config file."""
         self.assertEqual(self.client._domain, "fake.woffu.com")
         self.assertEqual(self.client._username, "test_user")
         self.assertEqual(self.client._token, "FAKE_TOKEN")
@@ -48,11 +57,13 @@ class TestWoffuAPIClient(BaseWoffuAPITest):
         self.assertIn("Bearer", self.client.headers["Authorization"])
 
     def test_compose_auth_headers_returns_expected_dict(self):
-        """Verify that _compose_auth_headers builds correct headers with Bearer token."""
+        """Verify that auth headers are properly composed."""
         headers = self.client._compose_auth_headers()
 
         self.assertIsInstance(headers, dict)
-        self.assertEqual(headers["Authorization"], f"Bearer {self.client._token}")
+        self.assertEqual(
+            headers["Authorization"], f"Bearer {self.client._token}",
+        )
         self.assertEqual(headers["Accept"], "application/json")
 
     def test_compose_auth_headers_reflects_token_change(self):
@@ -63,14 +74,16 @@ class TestWoffuAPIClient(BaseWoffuAPITest):
         self.assertEqual(headers["Authorization"], "Bearer NEW_FAKE_TOKEN")
         self.assertEqual(headers["Accept"], "application/json")
 
+
 # ------------------------
 # Basic Network Calls
 # ------------------------
 class TestWoffuAPINetwork(BaseWoffuAPITest):
+    """Test class for WoffuAPIClient Network calls."""
 
     @patch.object(WoffuAPIClient, "get")
     def test_get_request_is_sent_with_correct_headers(self, mock_get):
-        """Test that GET requests can be called (headers applied internally)."""
+        """Test that GET requests can be called."""
         mock_response = MagicMock(status=200)
         mock_response.json.return_value = {"key": "value"}
         mock_get.return_value = mock_response
@@ -82,20 +95,25 @@ class TestWoffuAPINetwork(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "post")
     def test_post_request_is_sent_with_expected_data(self, mock_post):
+        """Test that POST requests can be called."""
         data = {"key": "value"}
         self.client.post("/api/some_endpoint", json=data)
 
         mock_post.assert_called_once()
 
+
 # ------------------------
 # Filesystem & Download
 # ------------------------
 class TestWoffuAPIDownload(BaseWoffuAPITest):
+    """Test class for WoffuAPIClient Download calls."""
 
     @patch.object(WoffuAPIClient, "download_document")
     @patch.object(WoffuAPIClient, "get_documents")
-    def test_download_all_documents_calls_download_for_each_document(self, mock_get_documents, mock_download_document):
-        """Test that download_all_documents retrieves documents and downloads each one."""
+    def test_download_all_documents_calls_download_for_each_document(
+        self, mock_get_documents, mock_download_document,
+    ):
+        """Test a successful download_all_documents call."""
         fake_docs = [
             {"Name": "doc1.pdf", "DocumentId": "1"},
             {"Name": "doc2.pdf", "DocumentId": "2"},
@@ -105,7 +123,7 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
 
         self.client.download_all_documents(output_dir=str(output_dir))
 
-        # Verify get_documents was called (call signature matches real implementation)
+        # Verify get_documents was called once
         mock_get_documents.assert_called_once()
         # Verify download_document called for each document
         self.assertEqual(mock_download_document.call_count, len(fake_docs))
@@ -130,6 +148,7 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "get")
     def test_download_document_creates_directory_if_missing(self, mock_get):
+        """Test that output dir is created if missing."""
         fake_document = {"Name": "file.pdf", "DocumentId": "ID"}
         output_dir = self.tmp_dir / "new_downloads"
         mock_response = MagicMock(status=200)
@@ -144,6 +163,7 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "get")
     def test_download_document_raises_exception_skips_file(self, mock_get):
+        """Test that an exception is raised when a file already exists."""
         fake_document = {"Name": "fail.pdf", "DocumentId": "ID"}
         output_dir = self.tmp_dir / "downloads"
         output_dir.mkdir(exist_ok=True)
@@ -153,8 +173,10 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "get")
     @patch("src.woffu_client.woffu_api_client.logger")
-    def test_download_document_http_exception_skips_file(self, mock_logger, mock_get):
-        """download_document skips writing file on GET exception"""
+    def test_download_document_http_exception_skips_file(
+        self, mock_logger, mock_get,
+    ):
+        """Test that download_document skips writing file on GET exception."""
         output_dir = self.tmp_dir / "downloads"
         output_dir.mkdir(exist_ok=True)
         fake_document = {"Name": "fail.pdf", "DocumentId": "DOC_ID"}
@@ -165,13 +187,20 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "download_document")
     @patch.object(WoffuAPIClient, "get_documents")
-    def test_download_all_documents_mixed_failures(self, mock_get_docs, mock_download):
-        """download_all_documents continues if some documents fail"""
-        docs = [{"Name": "a.pdf", "DocumentId": "1"}, {"Name": "b.pdf", "DocumentId": "2"}]
+    def test_download_all_documents_mixed_failures(
+        self, mock_get_docs, mock_download,
+    ):
+        """download_all_documents continues if some documents fail."""
+        docs = [
+            {"Name": "a.pdf", "DocumentId": "1"},
+            {"Name": "b.pdf", "DocumentId": "2"},
+        ]
         mock_get_docs.return_value = docs
 
         def fail_on_second(*args, **kwargs):
-            doc: Optional[Dict] = kwargs.get("document") or (args[0] if args else None)
+            doc: Optional[Dict] = kwargs.get("document") or (
+                args[0] if args else None
+            )
             if doc is not None and doc["Name"] == "b.pdf":
                 raise ValueError("Download failed")
 
@@ -184,8 +213,10 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
     # --------------------------
     @patch.object(WoffuAPIClient, "get")
     @patch("src.woffu_client.woffu_api_client.logger")
-    def test_download_document_http_fail_does_not_write_file(self, mock_logger, mock_get):
-        """download_document does not write file if HTTP status != 200"""
+    def test_download_document_http_fail_does_not_write_file(
+        self, mock_logger, mock_get,
+    ):
+        """download_document does not write file if HTTP status != 200."""
         output_dir = self.tmp_dir / "downloads"
         output_dir.mkdir(exist_ok=True)
         fake_document = {"Name": "fail.pdf", "DocumentId": "DOC_ID"}
@@ -202,23 +233,30 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "get_documents")
     @patch.object(WoffuAPIClient, "download_document")
-    def test_download_all_documents_no_documents(self, mock_download, mock_get_docs):
-        """download_all_documents with empty list calls download_document 0 times"""
+    def test_download_all_documents_no_documents(
+        self, mock_download, mock_get_docs,
+    ):
+        """download_all_documents shouldn't call get_documents."""
         mock_get_docs.return_value = []
         self.client.download_all_documents()
         mock_download.assert_not_called()
 
     @patch.object(WoffuAPIClient, "get_documents")
     @patch.object(WoffuAPIClient, "download_document")
-    def test_download_all_documents_partial_failures(self, mock_download, mock_get_docs):
-        """download_all_documents continues even if some downloads fail"""
+    def test_download_all_documents_partial_failures(
+        self, mock_download, mock_get_docs,
+    ):
+        """download_all_documents continues even if some downloads fail."""
         mock_get_docs.return_value = [
             {"Name": "a.pdf", "DocumentId": "1"},
-            {"Name": "b.pdf", "DocumentId": "2"}
+            {"Name": "b.pdf", "DocumentId": "2"},
         ]
 
         def fail_on_second(*args, **kwargs):
-            doc: Optional[Dict] = kwargs.get("document") or (args[0] if args else None)
+            """Fake a failure on the second document."""
+            doc: Optional[Dict] = kwargs.get("document") or (
+                args[0] if args else None
+            )
             if doc is not None and doc["Name"] == "b.pdf":
                 raise ValueError("Download failed")
 
@@ -227,9 +265,10 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
         # Ensure partial failures don't stop the loop
         self.client.download_all_documents()
         self.assertEqual(mock_download.call_count, 2)
-    
+
     @patch.object(WoffuAPIClient, "get")
     def test_get_documents_returns_empty_list(self, mock_get):
+        """Test that get_documents returns an empty list."""
         mock_get.return_value.status = 200
         mock_get.return_value.json.return_value = {}
         docs = self.client.get_documents()
@@ -237,9 +276,11 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "get")
     def test_get_documents_returns_docs_list(self, mock_get):
+        """Test that get_documents returns a proper list."""
         mock_get.return_value.status = 200
         mock_get.return_value.json.return_value = {
-            "Documents": [{"Name": "doc1.pdf"}], "TotalRecords": 1
+            "Documents": [{"Name": "doc1.pdf"}],
+            "TotalRecords": 1,
         }
         docs = self.client.get_documents()
         self.assertEqual(len(docs), 1)
@@ -250,24 +291,37 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
     # ------------------------
     @patch.object(WoffuAPIClient, "_get_diary_hour_types")
     def test_get_diary_hour_types_summary(self, mock_get):
-        """Test get_diary_hour_types_summary computes hour types over date range."""
+        """Test proper get_diary_hour_types_summary call."""
         mock_get.return_value = [{"name": "Extr. a compensar", "hours": 2}]
         from_date = "2025-09-12"
         to_date = "2025-09-12"
-        summary = self.client.get_diary_hour_types_summary(from_date=from_date, to_date=to_date)
+        summary = self.client.get_diary_hour_types_summary(
+            from_date=from_date, to_date=to_date,
+        )
 
         self.assertIn(from_date, summary)
         self.assertIn("Extr. a compensar", summary[from_date])
         self.assertEqual(summary[from_date]["Extr. a compensar"], 2)
 
     @patch.object(WoffuAPIClient, "_get_diary_hour_types")
-    def test_get_diary_hour_types_summary_aggregates_multiple_types(self, mock_get):
-        mock_get.return_value = [{"name": "TypeA", "hours": 1}, {"name": "TypeA", "hours": 2}]
-        summary = self.client.get_diary_hour_types_summary("2025-09-12", "2025-09-12")
+    def test_get_diary_hour_types_summary_aggregates_multiple_types(
+        self, mock_get,
+    ):
+        """Test get_diary_hour_types_summary with multiple types."""
+        mock_get.return_value = [
+            {"name": "TypeA", "hours": 1},
+            {"name": "TypeA", "hours": 2},
+        ]
+        summary = self.client.get_diary_hour_types_summary(
+            "2025-09-12", "2025-09-12",
+        )
         self.assertEqual(summary["2025-09-12"]["TypeA"], 3)
 
     @patch.object(WoffuAPIClient, "get")
-    def test_get_diary_hour_types_unexpected_type_returns_empty(self, mock_get):
+    def test_get_diary_hour_types_unexpected_type_returns_empty(
+        self, mock_get,
+    ):
+        """Test get_diary_hour_types_summary with unexpected types."""
         for bad_response in [None, "unexpected", ["not", "a", "dict"]]:
             mock_get.return_value.status = 200
             mock_get.return_value.json.return_value = bad_response
@@ -279,11 +333,19 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
     # --------------------------
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_only_running_clock(self, mock_get):
-        """Test get_status with only_running_clock=True returns correct last sign."""
+        """Test get_status returning last sign only."""
         mock_get.return_value.status = 200
         mock_get.return_value.json.return_value = [
-            {"SignIn": True, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "12:00:00 +01"},
-            {"SignIn": False, "TrueDate": "2025-09-12T16:00:00.000", "UtcTime": "16:00:00 +01"}
+            {
+                "SignIn": True,
+                "TrueDate": "2025-09-12T12:00:00.000",
+                "UtcTime": "12:00:00 +01",
+            },
+            {
+                "SignIn": False,
+                "TrueDate": "2025-09-12T16:00:00.000",
+                "UtcTime": "16:00:00 +01",
+            },
         ]
 
         total, running = self.client.get_status(only_running_clock=True)
@@ -305,7 +367,11 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
         """Test get_status handles invalid UtcTime formats gracefully."""
         mock_get.return_value.status = 200
         mock_get.return_value.json.return_value = [
-            {"SignIn": True, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "INVALID"}
+            {
+                "SignIn": True,
+                "TrueDate": "2025-09-12T12:00:00.000",
+                "UtcTime": "INVALID",
+            },
         ]
 
         total, running = self.client.get_status()
@@ -341,24 +407,29 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
         fake_document = {"Name": "existing.pdf", "DocumentId": "DOC_ID"}
 
         self.client.download_document(fake_document, str(output_dir))
-        self.assertEqual(file_path.read_bytes(), b"EXISTING")  # Not overwritten
+        self.assertEqual(
+            file_path.read_bytes(), b"EXISTING",
+        )  # Not overwritten
+
 
 # -------------------------------
 # Authentication & Credential
 # -------------------------------
 class TestWoffuAPIAuth(BaseWoffuAPITest):
+    """Test class for WoffuAPIAuth authentication and credentials."""
 
-    @patch.object(WoffuAPIClient, "post")
-    def test_retrieve_access_token_no_credentials_sets_empty_token(self, mock_post):
-        """_retrieve_access_token returns early if username/password missing"""
+    def test_retrieve_access_token_no_credentials_sets_empty_token(self):
+        """_retrieve_access_token should return early."""
         self.client._token = "OLD"
         self.client._retrieve_access_token(username="", password="")
         self.assertEqual(self.client._token, "OLD")
 
     @patch.object(WoffuAPIClient, "post")
     @patch("src.woffu_client.woffu_api_client.logger")
-    def test_retrieve_access_token_invalid_credentials_sets_empty_token(self, mock_logger, mock_post):
-        """_retrieve_access_token sets empty token if HTTP status != 200"""
+    def test_retrieve_access_token_invalid_credentials_sets_empty_token(
+        self, mock_logger, mock_post,
+    ):
+        """_retrieve_access_token sets empty token if HTTP status != 200."""
         mock_response = MagicMock(status=401, json=lambda: {})
         mock_post.return_value = mock_response
 
@@ -384,8 +455,10 @@ class TestWoffuAPIAuth(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "post")
     @patch("src.woffu_client.woffu_api_client.logger")
-    def test_retrieve_access_token_invalid_json_returns_empty_token(self, mock_logger, mock_post):
-        """_retrieve_access_token should handle invalid JSON response gracefully and set empty token."""
+    def test_retrieve_access_token_invalid_json_returns_empty_token(
+        self, mock_logger, mock_post,
+    ):
+        """_retrieve_access_token should set empty token on invalid JSON."""
         mock_response = MagicMock(status=200)
         mock_response.json.side_effect = ValueError("Invalid JSON")
         mock_post.return_value = mock_response
@@ -402,8 +475,10 @@ class TestWoffuAPIAuth(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "post")
     @patch("src.woffu_client.woffu_api_client.logger")
-    def test_retrieve_access_token_http_error_non_200(self, mock_logger, mock_post):
-        """_retrieve_access_token logs and leaves token empty if status != 200"""
+    def test_retrieve_access_token_http_error_non_200(
+        self, mock_logger, mock_post,
+    ):
+        """_retrieve_access_token leaves token empty if status != 200."""
         mock_response = MagicMock(status=403, json=lambda: {})
         mock_post.return_value = mock_response
         self.client._token = "OLD"
@@ -413,8 +488,10 @@ class TestWoffuAPIAuth(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "post")
     @patch("src.woffu_client.woffu_api_client.logger")
-    def test_retrieve_access_token_raises_exception_resets_token(self, mock_logger, mock_post):
-        """_retrieve_access_token handles exceptions gracefully and clears token"""
+    def test_retrieve_access_token_raises_exception_resets_token(
+        self, mock_logger, mock_post,
+    ):
+        """_retrieve_access_token handles exceptions and clears token."""
         mock_post.side_effect = Exception("Network down")
         self.client._token = "OLD"
         self.client._retrieve_access_token(username="u", password="p")
@@ -425,21 +502,27 @@ class TestWoffuAPIAuth(BaseWoffuAPITest):
     # Possible duplicated tests?
     # --------------------------
     @patch.object(WoffuAPIClient, "post")
-    def test_retrieve_access_token_missing_credentials_logs_error(self, mock_post):
-        """If username/password missing, no POST request should be sent and token remains unchanged."""
+    def test_retrieve_access_token_missing_credentials_logs_error(
+        self, mock_post,
+    ):
+        """No POST request should be sent and token remains unchanged."""
         old_token = self.client._token
         self.client._retrieve_access_token(username="", password="")
         mock_post.assert_not_called()
         self.assertEqual(self.client._token, old_token)
 
+
 # -------------------------------
 # Request credentials (interactive/non-interactive)
 # -------------------------------
 class TestWoffuAPIRequestCredentials(BaseWoffuAPITest):
+    """Test class for WoffuAPIClient credentials request calls."""
 
     @patch("src.woffu_client.woffu_api_client.logger")
-    def test_request_credentials_non_interactive_logs_error_and_exits(self, mock_logger):
-        """_request_credentials logs error before exiting when non-interactive and no env vars"""
+    def test_request_credentials_non_interactive_logs_error_and_exits(
+        self, mock_logger,
+    ):
+        """_request_credentials should log error before exiting."""
         self.client._interactive = False
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(SystemExit):
@@ -448,52 +531,67 @@ class TestWoffuAPIRequestCredentials(BaseWoffuAPITest):
         # ✅ Verify log recorded HTTP failure
         mock_logger.error.assert_called_once()
         args, _ = mock_logger.error.call_args
-        self.assertIn("Can't request token in non-interactive method without username and password. Please provide them in WOFFU_USERNAME and WOFFU_PASSWORD.", args[0])
+        self.assertIn(
+            "Can't request token in non-interactive method \
+without username and password. Please provide them in \
+WOFFU_USERNAME and WOFFU_PASSWORD.",
+            args[0],
+        )
 
     @patch("builtins.input", return_value="testuser")
-    @patch("src.woffu_client.woffu_api_client.getpass", return_value="testpass")
+    @patch(
+        "src.woffu_client.woffu_api_client.getpass", return_value="testpass",
+    )
     @patch.object(WoffuAPIClient, "_retrieve_access_token")
     @patch.object(WoffuAPIClient, "_save_credentials")  # avoid writing file
     @patch.object(WoffuAPIClient, "get")  # mock HTTP GET requests
-    def test_request_credentials_interactive_reads_input(self, mock_get, mock_save, mock_token, mock_getpass, mock_input):
+    def test_request_credentials_interactive_reads_input(
+        self, mock_get, mock_save, mock_token, mock_getpass, mock_input,
+    ):
+        """Test interactive credentials request."""
         # Setup mock return values for HTTP GET requests
         # First call: users
         users_mock = {"UserId": "123", "CompanyId": "456"}
         company_mock = {"Domain": "example.com"}
         mock_get.side_effect = [
             MagicMock(json=lambda: users_mock),
-            MagicMock(json=lambda: company_mock)
+            MagicMock(json=lambda: company_mock),
         ]
 
         tmp_config = Path("/tmp/woffu_auth.json")  # dummy path, won't exist
 
         client = WoffuAPIClient(config=str(tmp_config), interactive=True)
 
-        # Assert _retrieve_access_token was called with the patched input values
-        mock_token.assert_called_once_with(username="testuser", password="testpass")
+        # Assert _retrieve_access_token was called with patched input values
+        mock_token.assert_called_once_with(
+            username="testuser", password="testpass",
+        )
         # Ensure the headers were composed
         self.assertIsInstance(client.headers, dict)
 
     def test_request_credentials_non_interactive_no_env_exits(self):
-        """_request_credentials exits when non-interactive and no env vars"""
+        """_request_credentials exits when non-interactive and no env vars."""
         self.client._interactive = False
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(SystemExit):
                 self.client._request_credentials()
 
+
 # -------------------------------
 # Load credentials handling
 # -------------------------------
 class TestWoffuAPICredentialsFile(BaseWoffuAPITest):
+    """Test class for WoffuAPIClient credentials management."""
 
     def test_load_credentials_external_file(self):
+        """Test loading external credentials file."""
         # Prepare a temporal file with the expected credentials info
         creds_json = {
             "username": "external_user",
             "token": "external_token",
             "user_id": 12345,
             "company_id": 23553,
-            "domain": "external.woffu.com"
+            "domain": "external.woffu.com",
         }
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -509,11 +607,13 @@ class TestWoffuAPICredentialsFile(BaseWoffuAPITest):
             self.assertEqual(self.client._domain, "external.woffu.com")
 
     def test_load_credentials_missing_file_requests_and_saves(self):
-        """_load_credentials triggers _request_credentials and _save_credentials if config missing"""
+        """_request_credentials and _save_credentials are called."""
         self.client._interactive = True  # prevent sys.exit
         self.client._config_file = Path("non_existing.json")
-        with patch.object(self.client, "_request_credentials") as mock_req, \
-            patch.object(self.client, "_save_credentials") as mock_save:
+        with (
+            patch.object(self.client, "_request_credentials") as mock_req,
+            patch.object(self.client, "_save_credentials") as mock_save,
+        ):
             self.client._load_credentials()
             mock_req.assert_called_once()
             mock_save.assert_called_once()
@@ -521,8 +621,10 @@ class TestWoffuAPICredentialsFile(BaseWoffuAPITest):
     @patch.object(WoffuAPIClient, "_request_credentials")
     @patch.object(WoffuAPIClient, "_save_credentials")
     @patch("src.woffu_client.woffu_api_client.logger")
-    def test_load_credentials_missing_file_logs_and_requests(self, mock_logger, mock_save, mock_req):
-        """_load_credentials logs a warning, requests credentials and saves them if config is missing"""
+    def test_load_credentials_missing_file_logs_and_requests(
+        self, mock_logger, mock_save, mock_req,
+    ):
+        """_load_credentials logs a warning."""
         self.client._config_file = Path("non_existing.json")
         self.client._load_credentials()
 
@@ -531,19 +633,23 @@ class TestWoffuAPICredentialsFile(BaseWoffuAPITest):
         # ✅ Verify log recorded HTTP failure
         mock_logger.warning.assert_called_once()
         args, _ = mock_logger.warning.call_args
-        self.assertIn(f"Config file '{self.client._config_file}' doesn't exist! Requesting authentication token...", args[0])
+        self.assertIn(
+            f"Config file '{self.client._config_file}' doesn't exist! \
+Requesting authentication token...",
+            args[0],
+        )
 
     @patch("pathlib.Path.open", side_effect=OSError("Can't read file"))
     def test_load_credentials_file_unreadable_raises(self, mock_open):
-        """_load_credentials handles unreadable config file gracefully"""
+        """_load_credentials handles unreadable config file gracefully."""
         self.client._interactive = True  # avoid sys.exit()
         self.client._config_file = Path("/nonexistent/config.json")
-        
+
         with self.assertRaises(OSError):
             self.client._load_credentials()
 
     def test_load_credentials_non_interactive_no_env_exits(self):
-        """_load_credentials exits if non-interactive and no env vars"""
+        """_load_credentials exits if non-interactive and no env vars."""
         self.client._interactive = False
         self.client._config_file = Path("non_existing.json")
         with patch.dict(os.environ, {}, clear=True):
@@ -554,50 +660,57 @@ class TestWoffuAPICredentialsFile(BaseWoffuAPITest):
     @patch.object(WoffuAPIClient, "_get_domain_user_companyId")
     @patch.object(WoffuAPIClient, "_save_credentials")
     def test_load_credentials_non_interactive_with_env_sets_credentials(
-        self, mock_save, mock_domain, mock_token
+        self, mock_save, mock_domain, mock_token,
     ):
-        """_load_credentials uses WOFFU_USERNAME/WOFFU_PASSWORD if present in env"""
-        with patch.dict(os.environ, {"WOFFU_USERNAME": "env_user", "WOFFU_PASSWORD": "env_pass"}):
+        """_load_credentials uses env vars if present."""
+        with patch.dict(
+            os.environ,
+            {"WOFFU_USERNAME": "env_user", "WOFFU_PASSWORD": "env_pass"},
+        ):
             mock_domain.return_value = None
             mock_save.return_value = None
-            
+
             self.client._config_file = Path("non_existing.json")
             self.client._load_credentials()
 
-            mock_token.assert_called_once_with(username="env_user", password="env_pass")
+            mock_token.assert_called_once_with(
+                username="env_user", password="env_pass",
+            )
             mock_domain.assert_called_once()
             mock_save.assert_called_once()
             self.assertEqual(self.client._username, "env_user")
 
     @patch("src.woffu_client.woffu_api_client.logger")
     def test_save_credentials(self, mock_logger):
+        """Test saving credentials to file."""
         self.client._save_credentials()
 
         # ✅ Verify log recorded HTTP failure
         mock_logger.info.assert_called_once()
         args, _ = mock_logger.info.call_args
-        self.assertIn(f"✅ Credentials stored in: {self.client._config_file}", args[0])
+        self.assertIn(
+            f"✅ Credentials stored in: {self.client._config_file}", args[0],
+        )
 
     @patch("pathlib.Path.open", side_effect=OSError("Cannot write file"))
     def test_save_credentials_other_oserror(self, mock_open):
-        """_save_credentials handles generic OSError"""
+        """_save_credentials handles generic OSError."""
         with self.assertRaises(OSError):
             self.client._save_credentials()
 
     @patch("src.woffu_client.woffu_api_client.Path.open")
     def test_save_credentials_raises_oserror(self, mock_open):
-        """_save_credentials should raise if writing to file fails"""
+        """_save_credentials should raise if writing to file fails."""
         mock_open.side_effect = OSError("Disk full")
         with self.assertRaises(OSError):
             self.client._save_credentials()
-
 
     # --------------------------
     # Possible duplicated tests?
     # --------------------------
     @patch("pathlib.Path.open", side_effect=PermissionError)
     def test_save_credentials_permission_error(self, mock_open):
-        """_save_credentials handles file write permission errors"""
+        """_save_credentials handles file write permission errors."""
         with self.assertRaises(PermissionError):
             self.client._save_credentials()
 
@@ -606,14 +719,17 @@ class TestWoffuAPICredentialsFile(BaseWoffuAPITest):
 # Presence & Workday slots
 # -------------------------------
 class TestWoffuAPIPresenceWorkday(BaseWoffuAPITest):
+    """Test class for WoffuAPIClient Presence and Workday slots calls."""
 
     @patch.object(WoffuAPIClient, "get")
     @patch("src.woffu_client.woffu_api_client.logger")
-    def test_get_presence_http_error_returns_empty_dict(self, mock_logger, mock_get):
-        """_get_presence returns {} if HTTP status != 200"""
+    def test_get_presence_http_error_returns_empty_list(
+        self, mock_logger, mock_get,
+    ):
+        """_get_presence returns [] if HTTP status != 200."""
         mock_get.return_value.status = 500
         result = self.client._get_presence("2025-09-12", "2025-09-12")
-        self.assertEqual(result, {})
+        self.assertEqual(result, [])
 
         # ✅ Verify log recorded HTTP failure
         mock_logger.error.assert_called_once()
@@ -622,45 +738,71 @@ class TestWoffuAPIPresenceWorkday(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "get")
     @patch("src.woffu_client.woffu_api_client.logger")
-    def test_get_workday_slots_http_error_returns_empty_dict(self, mock_logger, mock_get):
-        """_get_workday_slots returns {} if HTTP status != 200"""
+    def test_get_workday_slots_http_error_returns_empty_dict(
+        self, mock_logger, mock_get,
+    ):
+        """_get_workday_slots returns [] if HTTP status != 200."""
         mock_get.return_value.status = 500
         result = self.client._get_workday_slots(123)
-        self.assertEqual(result, {})
+        self.assertEqual(result, [])
 
         # ✅ Verify log recorded HTTP failure
         mock_logger.error.assert_called_once()
         args, _ = mock_logger.error.call_args
         self.assertIn("workday slots", args[0])
-    
+
+
 # -------------------------------
 # Summary & diary computations
 # -------------------------------
 class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
+    """Test class for WoffuAPIClient Summary and diary calls."""
 
     @patch.object(WoffuAPIClient, "_get_presence")
     @patch.object(WoffuAPIClient, "_get_workday_slots")
     def test_get_summary_report_empty_diaries(self, mock_slots, mock_presence):
-        """get_summary_report returns empty dict if no diaries"""
+        """get_summary_report returns empty dict if no diaries."""
         mock_presence.return_value = []
         result = self.client.get_summary_report("2025-09-12", "2025-09-12")
         self.assertEqual(result, {})
 
     @patch.object(WoffuAPIClient, "_get_workday_slots")
-    def test_get_summary_report_slot_without_motive_computes_hours(self, mock_slots):
-        """get_summary_report computes hours from in/out if no motive"""
-        diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": []}
-        mock_slots.return_value = [{"in": {"trueDate":"2025-09-12T12:00:00","utcTime":"12:00:00 +01"},
-                                    "out":{"trueDate":"2025-09-12T16:00:00","utcTime":"16:00:00 +01"}}]
+    def test_get_summary_report_slot_without_motive_computes_hours(
+        self, mock_slots,
+    ):
+        """get_summary_report computes hours from in/out if no motive."""
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [],
+        }
+        mock_slots.return_value = [
+            {
+                "in": {
+                    "trueDate": "2025-09-12T12:00:00",
+                    "utcTime": "12:00:00 +01",
+                },
+                "out": {
+                    "trueDate": "2025-09-12T16:00:00",
+                    "utcTime": "16:00:00 +01",
+                },
+            },
+        ]
         with patch.object(self.client, "_get_presence", return_value=[diary]):
             result = self.client.get_summary_report("2025-09-12", "2025-09-12")
             self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 4)
 
     @patch.object(WoffuAPIClient, "_get_presence")
     @patch.object(WoffuAPIClient, "_get_workday_slots")
-    def test_get_summary_report_diary_with_missing_hours(self, mock_slots, mock_presence):
-        """get_summary_report correctly handles diaryHourTypes with missing 'hours' key"""
-        diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": [{"name": "A"}]}
+    def test_get_summary_report_diary_with_missing_hours(
+        self, mock_slots, mock_presence,
+    ):
+        """get_summary_report handles missing 'hours' key."""
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [{"name": "A"}],
+        }
         mock_presence.return_value = [diary]
         mock_slots.return_value = []
 
@@ -669,20 +811,36 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "_get_presence")
     @patch.object(WoffuAPIClient, "_get_workday_slots")
-    def test_get_summary_report_invalid_slot_times(self, mock_slots, mock_presence):
-        """get_summary_report skips diary slots with invalid in/out"""
-        diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": []}
+    def test_get_summary_report_invalid_slot_times(
+        self, mock_slots, mock_presence,
+    ):
+        """get_summary_report skips diary slots with invalid in/out."""
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [],
+        }
         mock_presence.return_value = [diary]
-        mock_slots.return_value = [{"in": {"trueDate": "INVALID", "utcTime": "INVALID"},
-                                    "out": {"trueDate": "INVALID", "utcTime": "INVALID"}}]
+        mock_slots.return_value = [
+            {
+                "in": {"trueDate": "INVALID", "utcTime": "INVALID"},
+                "out": {"trueDate": "INVALID", "utcTime": "INVALID"},
+            },
+        ]
         result = self.client.get_summary_report("2025-09-12", "2025-09-12")
         self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 0)
 
     @patch.object(WoffuAPIClient, "_get_presence")
     @patch.object(WoffuAPIClient, "_get_workday_slots")
-    def test_get_summary_report_missing_hours_key(self, mock_slots, mock_presence):
-        """get_summary_report handles diaryHourTypes missing 'hours' key"""
-        diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": [{"name": "A"}]}
+    def test_get_summary_report_missing_hours_key(
+        self, mock_slots, mock_presence,
+    ):
+        """get_summary_report handles diaryHourTypes missing 'hours' key."""
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [{"name": "A"}],
+        }
         mock_presence.return_value = [diary]
         mock_slots.return_value = []
         result = self.client.get_summary_report("2025-09-12", "2025-09-12")
@@ -693,35 +851,47 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
     # --------------------------
     @patch.object(WoffuAPIClient, "_get_presence")
     @patch.object(WoffuAPIClient, "_get_workday_slots")
-    def test_get_summary_report_invalid_slot_times_skipped(self, mock_slots, mock_presence):
-        """get_summary_report skips slots with invalid in/out times"""
-        diary = {"date": "2025-09-12", "diarySummaryId": 1, "diaryHourTypes": []}
+    def test_get_summary_report_invalid_slot_times_skipped(
+        self, mock_slots, mock_presence,
+    ):
+        """get_summary_report skips slots with invalid in/out times."""
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [],
+        }
         mock_presence.return_value = [diary]
         mock_slots.return_value = [
-            {"in": {"trueDate": "INVALID", "utcTime": "INVALID"},
-            "out": {"trueDate": "INVALID", "utcTime": "INVALID"}}
+            {
+                "in": {"trueDate": "INVALID", "utcTime": "INVALID"},
+                "out": {"trueDate": "INVALID", "utcTime": "INVALID"},
+            },
         ]
 
         result = self.client.get_summary_report("2025-09-12", "2025-09-12")
         # Work hours should be 0 because in/out parsing failed
         self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 0)
 
+
 # -------------
 # Status & Sign
 # -------------
 class TestWoffuAPIStatusSign(BaseWoffuAPITest):
+    """Test class for WoffuAPIClient Status and Sign calls."""
 
     @patch.object(WoffuAPIClient, "get")
     @patch("src.woffu_client.woffu_api_client.logger")
     def test_get_sign_requests_variants(self, mock_logger, mock_get):
-        """Test get_sign_requests for success and failure branches using subTest."""
+        """Test success/failure get_sign_requests branches."""
         test_date = "09/12/2025"
 
         test_cases = [
             {
                 "status": 200,
                 "json": {"Holidays": [{"date": test_date, "type": "Holiday"}]},
-                "expected_result": {"Holidays": [{"date": test_date, "type": "Holiday"}]},
+                "expected_result": {
+                    "Holidays": [{"date": test_date, "type": "Holiday"}],
+                },
                 "log_called": False,
             },
             {
@@ -758,15 +928,19 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
 
                 # Assertions
                 mock_get.assert_called_once_with(
-                    url=f"https://{self.client._domain}/api/svc/core/diary/user/requests",
-                    params={"date": test_date}
+                    url=f"https://{self.client._domain}\
+/api/svc/core/diary/user/requests",
+                    params={"date": test_date},
                 )
                 self.assertEqual(result, case["expected_result"])
 
                 if case["log_called"]:
                     mock_logger.error.assert_called_once()
                     log_args, _ = mock_logger.error.call_args
-                    self.assertIn(f"Can't retrieve sign motives for date {test_date}!", log_args[0])
+                    self.assertIn(
+                        f"Can't retrieve sign motives for date {test_date}!",
+                        log_args[0],
+                    )
                 else:
                     mock_logger.error.assert_not_called()
 
@@ -776,11 +950,15 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_and_sign(self, mock_get):
-        """Test get_status returns total_time and running_clock, sign sends POST."""
+        """Test get_status returns total_time and running_clock."""
         # Simulate signs with correct UtcTime format
         mock_get.return_value.status = 200
         mock_get.return_value.json.return_value = [
-            {"SignIn": True, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "12:00:00 +01"}
+            {
+                "SignIn": True,
+                "TrueDate": "2025-09-12T12:00:00.000",
+                "UtcTime": "12:00:00 +01",
+            },
         ]
 
         total, running = self.client.get_status()
@@ -790,26 +968,46 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
     @patch.object(WoffuAPIClient, "get")
     @patch.object(WoffuAPIClient, "post")
     def test_sign_post_fails_raises_exception(self, mock_post, mock_get):
+        """Test failed sign-in request."""
         mock_get.return_value.status = 200
-        mock_get.return_value.json.return_value = [{"SignIn": False, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "12:00:00 +01"}]
+        mock_get.return_value.json.return_value = [
+            {
+                "SignIn": False,
+                "TrueDate": "2025-09-12T12:00:00.000",
+                "UtcTime": "12:00:00 +01",
+            },
+        ]
         mock_post.side_effect = Exception("POST failed")
         with self.assertRaises(Exception):
             self.client.sign(type="in")
 
-    @patch.object(WoffuAPIClient, "get_status", return_value=(timedelta(0), True))
+    @patch.object(
+        WoffuAPIClient, "get_status", return_value=(timedelta(0), True),
+    )
     @patch.object(WoffuAPIClient, "post")
-    def test_sign_user_already_signed_returns_none(self, mock_post, mock_status):
+    def test_sign_user_already_signed_returns_none(
+        self, mock_post, mock_status,
+    ):
+        """Test already signed-in request."""
         result = self.client.sign(type="in")
         self.assertIsNone(result)
         mock_post.assert_not_called()
-    
+
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_multiple_invalid_utc_formats(self, mock_get):
-        """get_status handles multiple invalid UtcTime formats"""
+        """get_status handles multiple invalid UtcTime formats."""
         mock_get.return_value.status = 200
         mock_get.return_value.json.return_value = [
-            {"SignIn": True, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "BAD1"},
-            {"SignIn": False, "TrueDate": "2025-09-12T16:00:00.000", "UtcTime": "BAD2"},
+            {
+                "SignIn": True,
+                "TrueDate": "2025-09-12T12:00:00.000",
+                "UtcTime": "BAD1",
+            },
+            {
+                "SignIn": False,
+                "TrueDate": "2025-09-12T16:00:00.000",
+                "UtcTime": "BAD2",
+            },
         ]
 
         total, running = self.client.get_status()
@@ -818,29 +1016,53 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
 
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_only_running_clock_last_sign_false(self, mock_get):
+        """Test last status being signed out."""
         mock_get.return_value.status = 200
         mock_get.return_value.json.return_value = [
-            {"SignIn": True, "TrueDate":"2025-09-12T12:00:00.000", "UtcTime":"12:00:00 +01"},
-            {"SignIn": False, "TrueDate":"2025-09-12T16:00:00.000", "UtcTime":"16:00:00 +01"}
+            {
+                "SignIn": True,
+                "TrueDate": "2025-09-12T12:00:00.000",
+                "UtcTime": "12:00:00 +01",
+            },
+            {
+                "SignIn": False,
+                "TrueDate": "2025-09-12T16:00:00.000",
+                "UtcTime": "16:00:00 +01",
+            },
         ]
         _, running = self.client.get_status(only_running_clock=True)
         self.assertFalse(running)
-    
+
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_invalid_utc_fallback_local(self, mock_get):
+        """Test invalid UtcTime parsing."""
         mock_get.return_value.status = 200
-        mock_get.return_value.json.return_value = [{"SignIn": True, "TrueDate":"2025-09-12T12:00:00.000", "UtcTime":"INVALID"}]
+        mock_get.return_value.json.return_value = [
+            {
+                "SignIn": True,
+                "TrueDate": "2025-09-12T12:00:00.000",
+                "UtcTime": "INVALID",
+            },
+        ]
         total, running = self.client.get_status()
         self.assertTrue(running)
         self.assertIsInstance(total, timedelta)
 
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_invalid_utc_formats_mixed(self, mock_get):
-        """get_status handles multiple invalid UtcTime formats and computes running correctly"""
+        """Test several invalid UtcTime parsing."""
         mock_get.return_value.status = 200
         mock_get.return_value.json.return_value = [
-            {"SignIn": True, "TrueDate": "2025-09-12T12:00:00.000", "UtcTime": "BAD1"},
-            {"SignIn": False, "TrueDate": "2025-09-12T16:00:00.000", "UtcTime": "BAD2"},
+            {
+                "SignIn": True,
+                "TrueDate": "2025-09-12T12:00:00.000",
+                "UtcTime": "BAD1",
+            },
+            {
+                "SignIn": False,
+                "TrueDate": "2025-09-12T16:00:00.000",
+                "UtcTime": "BAD2",
+            },
         ]
         total, running = self.client.get_status()
         self.assertIsInstance(total, timedelta)
@@ -848,48 +1070,66 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
 
 
 class TestWoffuAPICSVExport(BaseWoffuAPITest):
+    """Test class for WoffuAPIClient CSV export calls."""
 
     @patch("src.woffu_client.woffu_api_client.logger")
     @patch.object(Path, "mkdir")
     @patch("builtins.open", create=True)
     def test_export_summary_to_csv(self, mock_open, mock_mkdir, mock_logger):
+        """Test valid CSV export call."""
         test_cases = [
             (
                 {
-                    "2025-01-01": {"Extr. a compensar": 0.5, "work_hours": 8.5},
+                    "2025-01-01": {
+                        "Extr. a compensar": 0.5,
+                        "work_hours": 8.5,
+                    },
                     "2025-01-02": {"work_hours": 7.5},
                 },
-                "", # from_date
-                "", # to_date
-                ",", # delimiter
+                "",  # from_date
+                "",  # to_date
+                ",",  # delimiter
                 ["2025-01-01", "2025-01-02"],
             ),
             (
                 {
-                    "2025-01-01": {"Extr. a compensar": 1.5, "work_hours": 9.0},
+                    "2025-01-01": {
+                        "Extr. a compensar": 1.5,
+                        "work_hours": 9.0,
+                    },
                     "2025-01-05": {"work_hours": 6.5},
                 },
                 "2025-01-01",
                 "2025-01-05",
-                ";", # delimiter
+                ";",  # delimiter
                 ["2025-01-01", "2025-01-05"],
             ),
             (
                 {},
                 "",
                 "",
-                ",", # delimiter
+                ",",  # delimiter
                 [],
             ),
         ]
 
-        for summary_report, from_date, to_date, delimiter, expected_rows in test_cases:
+        for (
+            summary_report,
+            from_date,
+            to_date,
+            delimiter,
+            expected_rows,
+        ) in test_cases:
             fake_csv_buffer = StringIO()
             mock_open.return_value.__enter__.return_value = fake_csv_buffer
             fake_path = Path("/fake/path")
 
             self.client.export_summary_to_csv(
-                summary_report, from_date, to_date, output_path=fake_path, delimiter=delimiter
+                summary_report,
+                from_date,
+                to_date,
+                output_path=fake_path,
+                delimiter=delimiter,
             )
 
             mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
@@ -905,7 +1145,9 @@ class TestWoffuAPICSVExport(BaseWoffuAPITest):
                 # Check delimiter
                 self.assertIn(delimiter, csv_content)
             else:
-                self.assertTrue(csv_content.strip() == "" or csv_content.startswith(""))
+                self.assertTrue(
+                    csv_content.strip() == "" or csv_content.startswith(""),
+                )
 
             mock_logger.info.assert_called_once()
             log_msg = mock_logger.info.call_args[0][0]
@@ -920,17 +1162,19 @@ class TestWoffuAPICSVExport(BaseWoffuAPITest):
     @patch("src.woffu_client.woffu_api_client.logger")
     @patch.object(Path, "mkdir")
     @patch("builtins.open", create=True)
-    def test_export_summary_to_csv_custom_delimiter(self, mock_open, mock_mkdir, mock_logger):
+    def test_export_summary_to_csv_custom_delimiter(
+        self, mock_open, mock_mkdir, mock_logger,
+    ):
         """Specifically test exporting CSV using a custom delimiter (';')."""
         summary_report = {
-            "2025-01-01": {"Extr. a compensar": 0.5, "work_hours": 8.5}
+            "2025-01-01": {"Extr. a compensar": 0.5, "work_hours": 8.5},
         }
         fake_csv_buffer = StringIO()
         mock_open.return_value.__enter__.return_value = fake_csv_buffer
         fake_path = Path("/fake/path")
 
         self.client.export_summary_to_csv(
-            summary_report, output_path=fake_path, delimiter=";"
+            summary_report, output_path=fake_path, delimiter=";",
         )
 
         fake_csv_buffer.seek(0)

@@ -1,23 +1,47 @@
-import urllib.request
-import urllib.parse
-import json as jsonlib
-import time
+"""stdrequests_session.py.
+
+Standard HTTP requests and session module.
+"""
+from __future__ import annotations
+
 import asyncio
 import base64
-from typing import Any, Optional, Dict, Union, AsyncGenerator, Tuple, cast, Iterator
-from collections.abc import Iterable
 import http.cookiejar
-from urllib.error import URLError, HTTPError
+import json as jsonlib
+import time
+import urllib.parse
+import urllib.request
+from collections.abc import Iterable
+from typing import Any
+from typing import AsyncGenerator
+from typing import cast
+from typing import Dict
+from typing import IO
+from typing import Iterator
+from typing import Optional
+from typing import Tuple
+from typing import Union
+from urllib.error import HTTPError
+from urllib.error import URLError
 
 
 class HTTPResponse:
+    """Provides the bare minimum features of an HTTP response."""
+
     _raw: Any
     status: int
     headers: Dict[str, str]
     _stream: bool
     _cached_content: Optional[bytes]
 
-    def __init__(self, raw_resp: Any, status: int, headers: Dict[str, str], stream: bool = False) -> None:
+    def __init__(
+        self,
+        raw_resp: Any,
+        status: int,
+        headers: Dict[str, str],
+        stream: bool = False,
+    ) -> None:
+        """Initialize the HTTPResponse object."""
         self._raw = raw_resp
         self.status = status
         self.headers = headers
@@ -52,11 +76,14 @@ class HTTPResponse:
                 self._cached_content = self._raw.read()
         return cast(bytes, self._cached_content)
 
-    def iter_content(self, chunk_size: Optional[int] = 1024) -> Iterator[bytes]:
+    def iter_content(
+        self, chunk_size: Optional[int] = 1024,
+    ) -> Iterator[bytes]:
+        """Content iterator."""
         if self._raw is None:
             yield b""
             return
-        
+
         if not self._stream:
             yield self.content
             return
@@ -79,8 +106,11 @@ class HTTPResponse:
                 break
             yield chunk
 
-    async def aiter_content(self, chunk_size: Optional[int] = 8192) -> AsyncGenerator[bytes, None]:
-        """Async chunked iterator (reads in thread to avoid blocking event loop)."""
+    async def aiter_content(
+        self, chunk_size: Optional[int] = 8192,
+    ) -> AsyncGenerator[bytes, None]:
+        """Async chunked iterator \
+            (reads in thread to avoid blocking event loop)."""
         # Defensive fallback if chunk_size is None or invalid
         if chunk_size is None or chunk_size <= 0:
             chunk_size = 8192
@@ -99,6 +129,8 @@ class HTTPResponse:
 
 
 class Session:
+    """HTTP Session class."""
+
     headers: Dict[str, str]
     params: Dict[str, str]
     timeout: int
@@ -116,6 +148,7 @@ class Session:
         retries: int = 3,
         stream: bool = False,
     ) -> None:
+        """Initialize the Session object."""
         self.headers = dict(headers or {})
         self.params = dict(params or {})
         self.timeout = timeout
@@ -132,10 +165,14 @@ class Session:
         # Allow user to set a custom opener later if desired
         self.opener = self._opener
 
-    def _apply_auth_header(self, headers: Dict[str, str], auth: Optional[Tuple[str, str]]) -> None:
+    def _apply_auth_header(
+        self, headers: Dict[str, str], auth: Optional[Tuple[str, str]],
+    ) -> None:
         if auth:
             user, pwd = auth
-            token = base64.b64encode(f"{user}:{pwd}".encode("utf-8")).decode("ascii")
+            token = base64.b64encode(f"{user}:{pwd}".encode("utf-8")).decode(
+                "ascii",
+            )
             headers.setdefault("Authorization", f"Basic {token}")
 
     def request(
@@ -151,124 +188,218 @@ class Session:
         stream: Optional[bool] = None,
         auth: Optional[Tuple[str, str]] = None,
     ) -> HTTPResponse:
-        # Merge defaults
-        timeout = self.timeout if timeout is None else timeout
-        retries = self.retries if retries is None else retries
-        stream = self.stream if stream is None else stream
+        """Send an HTTP request.
 
-        # Build headers and params
-        final_headers = dict(self.headers)  # session headers
+        :return HTTPResponse: HTTP response object.
+        """
+        timeout, retries, stream = self._resolve_defaults(
+            timeout, retries, stream,
+        )
+        url, final_headers = self._prepare_request(url, params, headers, auth)
+        body_bytes = self._prepare_body(data, json, final_headers)
+
+        return self._send_request(
+            method, url, body_bytes, final_headers,
+            timeout, retries, stream,
+        )
+
+    def _resolve_defaults(
+        self,
+        timeout: Optional[int],
+        retries: Optional[int],
+        stream: Optional[bool],
+    ) -> tuple[int, int, bool]:
+        """Return resolved timeout, retries, and stream values."""
+        return (
+            self.timeout if timeout is None else timeout,
+            self.retries if retries is None else retries,
+            self.stream if stream is None else stream,
+        )
+
+    def _prepare_request(
+        self,
+        url: str,
+        params: Optional[Dict[str, str]],
+        headers: Optional[Dict[str, str]],
+        auth: Optional[Tuple[str, str]],
+    ) -> tuple[str, Dict[str, str]]:
+        """Prepare URL with query params and merged headers."""
+        final_headers: Dict[str, str] = dict(self.headers)
         if headers:
             final_headers.update(headers)
         self._apply_auth_header(final_headers, auth)
 
-        final_params = dict(self.params)
+        final_params: Dict[str, str] = dict(self.params)
         if params:
             final_params.update(params)
         if final_params:
-            url = url + ("&" if "?" in url else "?") + urllib.parse.urlencode(final_params)
+            url += ("&" if "?" in url else "?") + \
+                urllib.parse.urlencode(final_params)
 
-        # Prepare body
-        body_bytes: Optional[bytes] = None
+        return url, final_headers
 
+    def _prepare_body(
+        self,
+        data: Optional[
+            Union[
+                dict, str, bytes, bytearray,
+                memoryview, IO[bytes], Iterable[bytes],
+            ]
+        ],
+        json: Optional[Any],
+        headers: Dict[str, str],
+    ) -> Optional[bytes]:
+        """Prepare the HTTP request body based on json or data."""
         if json is not None:
-            # JSON mode takes precedence over data
-            final_headers.setdefault("Content-Type", "application/json")
-            body_bytes = jsonlib.dumps(json).encode("utf-8")
-        elif data is not None:
-            if isinstance(data, dict):
-                # Default: form-encoded
-                final_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
-                body_bytes = urllib.parse.urlencode(data).encode("utf-8")
-            elif isinstance(data, str):
-                body_bytes = data.encode("utf-8")
-                final_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
-            elif isinstance(data, (bytes, bytearray, memoryview)):
-                # Accept bytearray and memoryview as raw bytes
-                body_bytes = bytes(data)  # convert to bytes if needed
-            elif hasattr(data, "read") and callable(data.read):
-                # Assume file-like, read bytes
-                body_bytes = data.read()
-                if not isinstance(body_bytes, bytes):
-                    raise TypeError("file-like object's read() must return bytes")
-            elif isinstance(data, Iterable):
-                # Accept iterable of bytes chunks; join them
-                body_bytes = b"".join(data)
-            else:
-                raise TypeError("data must be dict, str, or bytes")
+            headers.setdefault("Content-Type", "application/json")
+            return jsonlib.dumps(json).encode("utf-8")
 
+        if data is None:
+            return None
+
+        if isinstance(data, dict):
+            headers.setdefault(
+                "Content-Type", "application/x-www-form-urlencoded",
+            )
+            return urllib.parse.urlencode(data).encode("utf-8")
+        if isinstance(data, str):
+            headers.setdefault(
+                "Content-Type", "application/x-www-form-urlencoded",
+            )
+            return data.encode("utf-8")
+        if isinstance(data, (bytes, bytearray, memoryview)):
+            return bytes(data)
+        if isinstance(data, IO):  # <-- typed file-like
+            body_bytes = data.read()
+            if not isinstance(body_bytes, bytes):
+                raise TypeError("file-like object's read() must return bytes")
+            return body_bytes
+        if isinstance(data, Iterable):
+            return b"".join(data)
+
+        raise TypeError("data must be dict, str, or bytes")
+
+    def _send_request(
+        self,
+        method: str,
+        url: str,
+        body_bytes: Optional[bytes],
+        headers: Dict[str, str],
+        timeout: int,
+        retries: int,
+        stream: bool,
+    ) -> HTTPResponse:
+        """Perform the HTTP request with retries and return HTTPResponse."""
         last_exc: Optional[Exception] = None
         for attempt in range(retries):
             try:
                 req = urllib.request.Request(
-                    url, data=body_bytes, headers=final_headers, method=method.upper()
+                    url, data=body_bytes,
+                    headers=headers, method=method.upper(),
                 )
                 raw_resp = self.opener.open(req, timeout=timeout)
-                return HTTPResponse(raw_resp, raw_resp.getcode(), dict(raw_resp.getheaders()), stream=stream)
-            except (URLError) as e:
+                return HTTPResponse(
+                    raw_resp,
+                    raw_resp.getcode(),
+                    dict(raw_resp.getheaders()),
+                    stream=stream,
+                )
+            except URLError as e:
                 last_exc = e
                 if isinstance(e, HTTPError):
                     raw_resp = cast(Any, e)
-                    return HTTPResponse(raw_resp, e.code, dict(e.headers or {}), stream=stream)
+                    return HTTPResponse(
+                        raw_resp, e.code,
+                        dict(e.headers or {}), stream=stream,
+                    )
                 if attempt < retries - 1:
                     time.sleep(1)
                     continue
                 raise last_exc
 
-        # Defensive fallback (should never reach here)
-        raise RuntimeError("Request failed unexpectedly without raising an exception")
+        raise RuntimeError(
+            "Request failed unexpectedly without raising an exception",
+        )
 
     # Convenience sync methods
     def get(self, url: str, **kwargs: Any) -> HTTPResponse:
+        """Send a GET request."""
         return self.request("GET", url, **kwargs)
 
     def post(self, url: str, **kwargs: Any) -> HTTPResponse:
+        """Send a POST request."""
         return self.request("POST", url, **kwargs)
 
     def put(self, url: str, **kwargs: Any) -> HTTPResponse:
+        """Send a PUT request."""
         return self.request("PUT", url, **kwargs)
 
     def patch(self, url: str, **kwargs: Any) -> HTTPResponse:
+        """Send a PATCH request."""
         return self.request("PATCH", url, **kwargs)
 
     def delete(self, url: str, **kwargs: Any) -> HTTPResponse:
+        """Send a DELETE request."""
         return self.request("DELETE", url, **kwargs)
 
     # Async wrappers using asyncio.to_thread to avoid blocking the event loop
-    async def async_request(self, method: str, url: str, **kwargs: Any) -> HTTPResponse:
+    async def async_request(
+        self, method: str, url: str, **kwargs: Any,
+    ) -> HTTPResponse:
+        """Async wrapper for request."""
         return await asyncio.to_thread(self.request, method, url, **kwargs)
 
     async def async_get(self, url: str, **kwargs: Any) -> HTTPResponse:
+        """Async wrapper for GET request."""
         return await self.async_request("GET", url, **kwargs)
 
     async def async_post(self, url: str, **kwargs: Any) -> HTTPResponse:
+        """Async wrapper for POST request."""
         return await self.async_request("POST", url, **kwargs)
 
     async def async_put(self, url: str, **kwargs: Any) -> HTTPResponse:
+        """Async wrapper for PUT request."""
         return await self.async_request("PUT", url, **kwargs)
 
     async def async_patch(self, url: str, **kwargs: Any) -> HTTPResponse:
+        """Async wrapper for PATCH request."""
         return await self.async_request("PATCH", url, **kwargs)
 
     async def async_delete(self, url: str, **kwargs: Any) -> HTTPResponse:
+        """Async wrapper for DELETE request."""
         return await self.async_request("DELETE", url, **kwargs)
 
     # Context manager support
     def __enter__(self) -> "Session":
+        """Context manager support method."""
         return self
 
-    def __exit__(self, exc_type: Optional[type], exc: Optional[BaseException], tb: Optional[Any]) -> bool:
-        # nothing special to close; cookiejar/opener don't need explicit close
+    def __exit__(
+        self,
+        exc_type: Optional[type],
+        exc: Optional[BaseException],
+        tb: Optional[Any],
+    ) -> bool:
+        """
+        Exit method.
+
+        Nothing special to close; cookiejar/opener don't need explicit close.
+        """
         return False
 
     def close(self) -> None:
         """
-        Close the session by clearing cookies and closing any underlying resources.
-        This is just for API consistency, this isn't needed if using a Context manager"""
+        Close the session by clearing cookies and \
+            closing any underlying resources.
+
+        This is just for API consistency, this isn't \
+            needed if using a Context manager.
+        """
         # Clear all cookies
         self._cookie_jar.clear()
 
-        # Try to close the opener if it has a close method (some custom openers might)
+        # Try to close the opener if it has a close method \
+        # (some custom openers might)
         close_method = getattr(self.opener, "close", None)
         if callable(close_method):
             close_method()
