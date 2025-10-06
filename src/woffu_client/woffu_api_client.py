@@ -120,11 +120,15 @@ class WoffuAPIClient(Session):
 
     def _request_credentials(self):
         """
-        Request all available information to \
-            compose credentials.
+        Request and store user credentials for accessing the Woffu API.
 
-        Use WOFFU_USERNAME and WOFFU_PASSWORD \
-            environment variables for unattended request.
+        This method retrieves credentials from environment variables
+        (WOFFU_USERNAME and WOFFU_PASSWORD) or prompts the user for them
+        if running in interactive mode.
+
+        Raises:
+            SystemExit: If credentials are required but cannot be obtained
+                         in either interactive or non-interactive mode.
         """
         self._username = os.environ.get("WOFFU_USERNAME", "")
         password = os.environ.get("WOFFU_PASSWORD", "")

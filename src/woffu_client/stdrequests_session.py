@@ -129,7 +129,16 @@ class HTTPResponse:
 
 
 class Session:
-    """HTTP Session class."""
+    """
+    A session for making HTTP requests to Woffu.
+
+    This class handles connection pooling and other session-related tasks.
+    Use the 'with' statement to manage the session lifecycle.
+
+    Example:
+        with Session() as session:
+            response = session.get("https://example.com")
+    """
 
     headers: Dict[str, str]
     params: Dict[str, str]
