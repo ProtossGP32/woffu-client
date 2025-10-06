@@ -767,6 +767,42 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
         self.assertEqual(result, {})
 
     @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_slot_with_motive_computes_hours(
+        self, mock_slots,
+    ):
+        """get_summary_report computes hours from motive key."""
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [],
+        }
+        mock_slots.return_value = [
+            {
+                "in": {
+                    "trueDate": "2025-09-12T12:00:00",
+                    "utcTime": "12:00:00 +01",
+                },
+                "out": {
+                    "trueDate": "2025-09-12T16:00:00.1",
+                    "utcTime": "16:00:00 +01",
+                },
+                "motive": {
+                    'agreementEventId': 913100,
+                    'hours': 9.47056,
+                    'isPresence': True,
+                    'name': 'Oficina/Office',
+                    'requestId': None,
+                    'trueHours': 2.745,
+                },
+            },
+        ]
+        with patch.object(self.client, "_get_presence", return_value=[diary]):
+            result = self.client.get_summary_report("2025-09-12", "2025-09-12")
+            self.assertAlmostEqual(
+                result["2025-09-12"]["work_hours"], 2.745,
+            )
+
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
     def test_get_summary_report_slot_without_motive_computes_hours(
         self, mock_slots,
     ):
@@ -783,14 +819,16 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
                     "utcTime": "12:00:00 +01",
                 },
                 "out": {
-                    "trueDate": "2025-09-12T16:00:00",
+                    "trueDate": "2025-09-12T16:00:00.1",
                     "utcTime": "16:00:00 +01",
                 },
             },
         ]
         with patch.object(self.client, "_get_presence", return_value=[diary]):
             result = self.client.get_summary_report("2025-09-12", "2025-09-12")
-            self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 4)
+            self.assertAlmostEqual(
+                result["2025-09-12"]["work_hours"], 4.0000277777777775,
+            )
 
     @patch.object(WoffuAPIClient, "_get_presence")
     @patch.object(WoffuAPIClient, "_get_workday_slots")

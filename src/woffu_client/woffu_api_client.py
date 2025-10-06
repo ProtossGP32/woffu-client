@@ -641,10 +641,10 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
     def _get_slot_hours(self, slot: dict, date: str) -> float:
         """Return the hours for a single slot, using motive if available."""
         if slot and slot.get("motive"):
-            return slot["motive"]["hours"]
+            return slot["motive"]["trueHours"]
 
         logger.info(
-            f"Slot of date {date} doesn't have motive.\
+            f"Slot of date {date} doesn't have motive. \
 Using `in`/`out` keys...",
         )
         return self._calculate_hours_from_in_out(slot)
@@ -670,10 +670,17 @@ Using `in`/`out` keys...",
     def _parse_datetime(self, date_str: str, utc_offset: str) -> datetime:
         """Parse date string and UTC offset safely into datetime."""
         date_timezoned = f"{date_str}{utc_offset.zfill(3)}00"
-        return datetime.strptime(
-            date_timezoned,
-            f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z",
-        )
+        try:
+            return datetime.strptime(
+                date_timezoned,
+                f"{DEFAULT_DATE_FORMAT}T%H:%M:%S%z",
+            )
+        except Exception as e:
+            logger.debug(f"Date with milliseconds. {e}")
+            return datetime.strptime(
+                date_timezoned,
+                f"{DEFAULT_DATE_FORMAT}T%H:%M:%S.%f%z",
+            )
 
     def _aggregate_hour_types(
         self, event_report: dict,
