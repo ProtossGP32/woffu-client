@@ -783,14 +783,16 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
                     "utcTime": "12:00:00 +01",
                 },
                 "out": {
-                    "trueDate": "2025-09-12T16:00:00",
+                    "trueDate": "2025-09-12T16:00:00.1",
                     "utcTime": "16:00:00 +01",
                 },
             },
         ]
         with patch.object(self.client, "_get_presence", return_value=[diary]):
             result = self.client.get_summary_report("2025-09-12", "2025-09-12")
-            self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 4)
+            self.assertAlmostEqual(
+                result["2025-09-12"]["work_hours"], 4.0000277777777775,
+            )
 
     @patch.object(WoffuAPIClient, "_get_presence")
     @patch.object(WoffuAPIClient, "_get_workday_slots")
