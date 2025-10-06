@@ -641,7 +641,7 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
     def _get_slot_hours(self, slot: dict, date: str) -> float:
         """Return the hours for a single slot, using motive if available."""
         if slot and slot.get("motive"):
-            return slot["motive"]["hours"]
+            return slot["motive"]["trueHours"]
 
         logger.info(
             f"Slot of date {date} doesn't have motive. \
