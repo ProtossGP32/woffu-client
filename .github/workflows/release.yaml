@@ -95,7 +95,7 @@ jobs:
           pip install ".[dev]"
 
       - name: Set runner timezone
-        run: sudo timedatectl set-timezone Europe/Madrid
+        run: timedatectl set-timezone Europe/Madrid
 
       - name: Verify runner's timezone
         run: date
@@ -135,7 +135,7 @@ jobs:
         with:
           name: coverage
           path: coverage
-      - uses: SonarSource/sonarqube-scan-action@v5
+      - uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
