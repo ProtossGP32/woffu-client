@@ -94,17 +94,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install ".[dev]"
 
-      - name: Configure timezone
-        run: |
-          sudo ln -snf /usr/share/zoneinfo/Europe/Madrid /etc/localtime
-          echo "Europe/Madrid" | sudo tee /etc/timezone
-          date
-
-      - name: Verify runner's timezone
-        run: |
-          date
-          ls -l /etc/localtime
-
       - name: Run tests
         env:
           # Not required but explicitly defined to warn user that tests are executed in this timezone
