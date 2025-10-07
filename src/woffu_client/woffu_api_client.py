@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import sys
+import zoneinfo
 from datetime import datetime
 from datetime import timedelta
 from getpass import getpass
@@ -35,6 +36,7 @@ DEFAULT_DOCS_DIR = Path.home() / "Documents/woffu/docs"
 DEFAULT_SUMMARY_REPORTS_DIR = Path.home() / "Documents/woffu/summary_reports"
 
 DEFAULT_DATE_FORMAT = "%Y-%m-%d"
+UTC_OFFSET = "+0000"
 
 
 class WoffuAPIClient(Session):
@@ -42,7 +44,14 @@ class WoffuAPIClient(Session):
 
     # Class arguments
     _woffu_api_url: str = "https://app.woffu.com"
-    _localzone = get_localzone()
+    try:
+        _localzone = get_localzone()
+    except zoneinfo.ZoneInfoNotFoundError:
+        # Fallback: use TZ environment variable if available
+        # - Workaround: Default to Europe/Madrid, this should be improved
+        #   knowing Woffu's issues with timezones
+        tzname = os.getenv("TZ", "Europe/Madrid")
+        _localzone = zoneinfo.ZoneInfo(tzname)
 
     hour_types_dict: dict = {5: "Extr. a compensar"}
 
@@ -443,7 +452,7 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
                 # Split UtcTime and keep only the offset (format '+HHMM')
                 utc_offset = f"{utc_time.split(' ')[1].zfill(3)}00"
             except (IndexError, AttributeError):
-                utc_offset = "+0000"  # fallback to UTC
+                utc_offset = UTC_OFFSET  # fallback to UTC
 
             # WORKAROUND: Woffu stores incorrect UTC information
             # when signing in from the Webapp, showing same local date
@@ -452,7 +461,7 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
             #   for any sign that comes with +0 in the UtcTime as we
             #   suspect Woffu DB is running on a server with the same
             #   local timezone as us.
-            if utc_offset == "+0000":
+            if utc_offset == UTC_OFFSET:
                 utc_offset = current_time.strftime("%z")
 
             sign_date_timezoned = f"{sign_date}{utc_offset}"
@@ -640,11 +649,11 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
 
     def _get_slot_hours(self, slot: dict, date: str) -> float:
         """Return the hours for a single slot, using motive if available."""
-        if slot and slot.get("motive"):
+        if slot and slot.get("motive") and slot.get("motive") is not None:
             return slot["motive"]["trueHours"]
 
         logger.info(
-            f"Slot of date {date} doesn't have motive. \
+            f"Slot of date {date} doesn't have motive or is incomplete. \
 Using `in`/`out` keys...",
         )
         return self._calculate_hours_from_in_out(slot)
@@ -669,7 +678,24 @@ Using `in`/`out` keys...",
 
     def _parse_datetime(self, date_str: str, utc_offset: str) -> datetime:
         """Parse date string and UTC offset safely into datetime."""
-        date_timezoned = f"{date_str}{utc_offset.zfill(3)}00"
+        # Prepare current time with local timezone to use in case
+        # UTC offsets are wrong in Woffu.
+        # - We do it this way to take into account
+        #   Daylight Saving Timezones (CET +1, CEST +2, for example).
+        current_time = datetime.now(tz=self._localzone)
+
+        # WORKAROUND: Woffu stores incorrect UTC information
+        # when signing in from the Webapp, showing same local date
+        # on 'TrueDate' and 'UtcTime' but with no UTC offset (+0).
+        # - For the time being, we'll be using our local timezone
+        #   for any sign that comes with +0 in the UtcTime as we
+        #   suspect Woffu DB is running on a server with the same
+        #   local timezone as us.
+        utc_offset = f"{utc_offset.zfill(3)}00"
+        if utc_offset == UTC_OFFSET:
+            utc_offset = current_time.strftime("%z")
+
+        date_timezoned = f"{date_str}{utc_offset}"
         try:
             return datetime.strptime(
                 date_timezoned,

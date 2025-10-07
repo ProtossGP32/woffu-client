@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 import unittest
 from datetime import timedelta
 from io import StringIO
@@ -15,6 +16,14 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from src.woffu_client.woffu_api_client import WoffuAPIClient
+
+# Force timezone for tests (local + CI)
+os.environ.setdefault("TZ", "Europe/Madrid")
+
+try:
+    time.tzset()  # Apply timezone setting on Unix
+except AttributeError:
+    pass  # Not available on Windows
 
 
 class BaseWoffuAPITest(unittest.TestCase):
@@ -780,11 +789,11 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
             {
                 "in": {
                     "trueDate": "2025-09-12T12:00:00",
-                    "utcTime": "12:00:00 +01",
+                    "utcTime": "12:00:00 +00",
                 },
                 "out": {
                     "trueDate": "2025-09-12T16:00:00.1",
-                    "utcTime": "16:00:00 +01",
+                    "utcTime": "15:00:00 +01",
                 },
                 "motive": {
                     'agreementEventId': 913100,
@@ -829,6 +838,72 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
             self.assertAlmostEqual(
                 result["2025-09-12"]["work_hours"], 4.0000277777777775,
             )
+
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_slot_without_motive_different_timezones(
+        self, mock_slots,
+    ):
+        """get_summary_report computes hours from in/out if no motive."""
+        diary = {
+            "date": "2025-09-30",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [],
+        }
+        mock_slots.return_value = [
+            {
+                "in": {
+                    "trueDate": "2025-09-30T09:30:00",
+                    "utcTime": "09:30:00 +0",
+                },
+                "motive": None,
+                "out": {
+                    "trueDate": "2025-09-30T17:53:39.21",
+                    "utcTime": "15:53:39 +2",
+                },
+            },
+        ]
+        with patch.object(self.client, "_get_presence", return_value=[diary]):
+            result = self.client.get_summary_report("2025-09-30", "2025-09-30")
+            self.assertAlmostEqual(
+                result["2025-09-30"]["work_hours"], 8.394225,
+            )
+
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_slot_without_motive_invalid_local_timezone(
+        self, mock_slots,
+    ):
+        """get_summary_report computes hours even with an \
+            invalid local timezone."""
+        os.environ["TZ"] = "Bad/Timezone"
+        time.tzset()  # Apply timezone setting on Unix
+
+        diary = {
+            "date": "2025-09-30",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [],
+        }
+        mock_slots.return_value = [
+            {
+                "in": {
+                    "trueDate": "2025-09-30T09:30:00",
+                    "utcTime": "09:30:00 +0",
+                },
+                "motive": None,
+                "out": {
+                    "trueDate": "2025-09-30T17:53:39.21",
+                    "utcTime": "15:53:39 +2",
+                },
+            },
+        ]
+        with patch.object(self.client, "_get_presence", return_value=[diary]):
+            result = self.client.get_summary_report("2025-09-30", "2025-09-30")
+            self.assertAlmostEqual(
+                result["2025-09-30"]["work_hours"], 8.394225,
+            )
+
+        # Restore environment value
+        os.environ["TZ"] = "Europe/Madrid"
+        time.tzset()  # Apply timezone setting on Unix
 
     @patch.object(WoffuAPIClient, "_get_presence")
     @patch.object(WoffuAPIClient, "_get_workday_slots")

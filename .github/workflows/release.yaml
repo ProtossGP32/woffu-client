@@ -95,6 +95,9 @@ jobs:
           pip install ".[dev]"
 
       - name: Run tests
+        env:
+          # Not required but explicitly defined to warn user that tests are executed in this timezone
+          TZ: Europe/Madrid
         run: pytest -v --maxfail=1 --disable-warnings --junitxml coverage/report.xml --cov-report term --cov-report xml:coverage/coverage.xml --cov=. tests
 
       - name: Upload coverage reports - Only for Python 3.11
@@ -127,7 +130,7 @@ jobs:
         with:
           name: coverage
           path: coverage
-      - uses: SonarSource/sonarqube-scan-action@v5
+      - uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
