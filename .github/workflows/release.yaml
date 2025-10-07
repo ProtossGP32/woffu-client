@@ -94,6 +94,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install ".[dev]"
 
+      - name: Set runner timezone
+        uses: szenius/set-timezone@v2.0
+        with:
+          timezoneLinux: "Europe/Madrid"
+          timezoneMacos: "Europe/Madrid"
+          timezoneWindows: "Romance Standard Time"
+
+      - name: Verify runner's timezone
+        run: date
+
       - name: Run tests
         run: pytest -v --maxfail=1 --disable-warnings --junitxml coverage/report.xml --cov-report term --cov-report xml:coverage/coverage.xml --cov=. tests
 
