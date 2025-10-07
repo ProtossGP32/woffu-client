@@ -94,9 +94,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install ".[dev]"
 
-      - name: Set runner timezone
-        run: timedatectl set-timezone Europe/Madrid
-
       - name: Verify runner's timezone
         run: date
 
