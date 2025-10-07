@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import sys
+import zoneinfo
 from datetime import datetime
 from datetime import timedelta
 from getpass import getpass
@@ -43,7 +44,14 @@ class WoffuAPIClient(Session):
 
     # Class arguments
     _woffu_api_url: str = "https://app.woffu.com"
-    _localzone = get_localzone()
+    try:
+        _localzone = get_localzone()
+    except zoneinfo.ZoneInfoNotFoundError:
+        # Fallback: use TZ environment variable if available
+        # - Workaround: Default to Europe/Madrid, this should be improved
+        #   knowing Woffu's issues with timezones
+        tzname = os.getenv("TZ", "Europe/Madrid")
+        _localzone = zoneinfo.ZoneInfo(tzname)
 
     hour_types_dict: dict = {5: "Extr. a compensar"}
 

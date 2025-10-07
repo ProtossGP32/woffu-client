@@ -87,7 +87,7 @@ jobs:
 
       - name: Install OS dependencies
         run: |
-          apt-get update && apt-get install -y sqlite3 tzdata
+          apt-get update && apt-get install -y sqlite3
 
       - name: Install dependencies
         run: |
@@ -107,6 +107,7 @@ jobs:
 
       - name: Run tests
         env:
+          # Not required but explicitly defined to warn user that tests are executed in this timezone
           TZ: Europe/Madrid
         run: pytest -v --maxfail=1 --disable-warnings --junitxml coverage/report.xml --cov-report term --cov-report xml:coverage/coverage.xml --cov=. tests
 

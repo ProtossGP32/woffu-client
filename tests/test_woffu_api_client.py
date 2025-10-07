@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 import unittest
 from datetime import timedelta
 from io import StringIO
@@ -15,6 +16,14 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from src.woffu_client.woffu_api_client import WoffuAPIClient
+
+# Force timezone for tests (local + CI)
+os.environ.setdefault("TZ", "Europe/Madrid")
+
+try:
+    time.tzset()  # Apply timezone setting on Unix
+except AttributeError:
+    pass  # Not available on Windows
 
 
 class BaseWoffuAPITest(unittest.TestCase):
@@ -858,6 +867,40 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
             self.assertAlmostEqual(
                 result["2025-09-30"]["work_hours"], 8.394225,
             )
+
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_slot_without_motive_invalid_local_timezone(
+        self, mock_slots,
+    ):
+        """get_summary_report computes hours even with an \
+            invalid local timezone."""
+        os.environ["TZ"] = "Bad/Timezone"
+        diary = {
+            "date": "2025-09-30",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [],
+        }
+        mock_slots.return_value = [
+            {
+                "in": {
+                    "trueDate": "2025-09-30T09:30:00",
+                    "utcTime": "09:30:00 +0",
+                },
+                "motive": None,
+                "out": {
+                    "trueDate": "2025-09-30T17:53:39.21",
+                    "utcTime": "15:53:39 +2",
+                },
+            },
+        ]
+        with patch.object(self.client, "_get_presence", return_value=[diary]):
+            result = self.client.get_summary_report("2025-09-30", "2025-09-30")
+            self.assertAlmostEqual(
+                result["2025-09-30"]["work_hours"], 8.394225,
+            )
+
+        # Restore environment value
+        os.environ["TZ"] = "Europe/Madrid"
 
     @patch.object(WoffuAPIClient, "_get_presence")
     @patch.object(WoffuAPIClient, "_get_workday_slots")
