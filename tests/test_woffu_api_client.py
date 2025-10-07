@@ -875,6 +875,8 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
         """get_summary_report computes hours even with an \
             invalid local timezone."""
         os.environ["TZ"] = "Bad/Timezone"
+        time.tzset()  # Apply timezone setting on Unix
+
         diary = {
             "date": "2025-09-30",
             "diarySummaryId": 1,
@@ -901,6 +903,7 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
 
         # Restore environment value
         os.environ["TZ"] = "Europe/Madrid"
+        time.tzset()  # Apply timezone setting on Unix
 
     @patch.object(WoffuAPIClient, "_get_presence")
     @patch.object(WoffuAPIClient, "_get_workday_slots")
