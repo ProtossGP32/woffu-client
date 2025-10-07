@@ -780,11 +780,11 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
             {
                 "in": {
                     "trueDate": "2025-09-12T12:00:00",
-                    "utcTime": "12:00:00 +01",
+                    "utcTime": "12:00:00 +00",
                 },
                 "out": {
                     "trueDate": "2025-09-12T16:00:00.1",
-                    "utcTime": "16:00:00 +01",
+                    "utcTime": "15:00:00 +01",
                 },
                 "motive": {
                     'agreementEventId': 913100,
@@ -828,6 +828,35 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
             result = self.client.get_summary_report("2025-09-12", "2025-09-12")
             self.assertAlmostEqual(
                 result["2025-09-12"]["work_hours"], 4.0000277777777775,
+            )
+
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_slot_without_motive_different_timezones(
+        self, mock_slots,
+    ):
+        """get_summary_report computes hours from in/out if no motive."""
+        diary = {
+            "date": "2025-09-30",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [],
+        }
+        mock_slots.return_value = [
+            {
+                "in": {
+                    "trueDate": "2025-09-30T09:30:00",
+                    "utcTime": "09:30:00 +0",
+                },
+                "motive": None,
+                "out": {
+                    "trueDate": "2025-09-30T17:53:39.21",
+                    "utcTime": "15:53:39 +2",
+                },
+            },
+        ]
+        with patch.object(self.client, "_get_presence", return_value=[diary]):
+            result = self.client.get_summary_report("2025-09-30", "2025-09-30")
+            self.assertAlmostEqual(
+                result["2025-09-30"]["work_hours"], 8.394225,
             )
 
     @patch.object(WoffuAPIClient, "_get_presence")
