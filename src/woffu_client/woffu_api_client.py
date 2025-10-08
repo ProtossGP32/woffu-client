@@ -346,7 +346,7 @@ in the documents folder, not downloading again",
 
         logger.error(
             f"Can't retrieve presence for the time period \
-{from_date} - {to_date}!",
+{from_date} - {to_date}! Status code: {hours_response.status}",
         )
         return []
 
@@ -389,7 +389,7 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
 
         logger.error(
             f"Can't retrieve workday slots for diary entry \
-{diary_summary_id}!",
+{diary_summary_id}! Status code: {workday_slots_response.status}",
         )
         return []
 
@@ -413,7 +413,8 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
                 return data
             return {}
 
-        logger.error(f"Can't retrieve sign motives for date {date}!")
+        logger.error(f"Can't retrieve sign motives for date {date}! \
+Status code: {sign_motives_response.status}")
         return {}
 
     def get_status(
@@ -624,7 +625,7 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
         if slot and slot.get("motive") and slot.get("motive") is not None:
             return slot["motive"]["trueHours"]
 
-        logger.info(
+        logger.debug(
             f"Slot of date {date} doesn't have motive or is incomplete. \
 Using `in`/`out` keys...",
         )
