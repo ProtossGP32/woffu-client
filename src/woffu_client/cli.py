@@ -79,21 +79,21 @@ def main() -> None:
         dest="period",
         action="store_const",
         const="week",
-        help="Get current week's total hours"
+        help="Get current week's total hours",
     )
     st_period.add_argument(
         "--month",
         dest="period",
         action="store_const",
         const="month",
-        help="Get current month's total hours"
+        help="Get current month's total hours",
     )
     st_period.add_argument(
         "--year",
         dest="period",
         action="store_const",
         const="year",
-        help="Get current year's total hours"
+        help="Get current year's total hours",
     )
     st_parser.set_defaults(period="today")
 
