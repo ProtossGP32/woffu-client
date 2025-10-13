@@ -11,7 +11,7 @@ import logging
 import os
 import sys
 import zoneinfo
-from datetime import date
+from datetime import date as dt_date
 from datetime import datetime
 from datetime import timedelta
 from getpass import getpass
@@ -422,7 +422,6 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
         self, only_running_clock: bool = False, period: str = "today",
     ) -> tuple[timedelta, bool]:
         """Return the total amount of worked hours and current sign status."""
-
         # Retrieve info for the period flags, e.g., --week, --month, --year
         if period != "today":
             return self._get_status_period(period), None
@@ -496,20 +495,18 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
         return total_time, running_clock
 
     def _get_status_period(self, period: str) -> timedelta:
+        today = dt_date.today()
         match period:
             case "week":
-                today = date.today()
                 from_date = today - timedelta(days=today.weekday())
                 to_date = from_date + timedelta(days=6)
             case "month":
-                today = date.today()
                 from_date = today.replace(day=1)
                 last_day = calendar.monthrange(today.year, today.month)[1]
                 to_date = today.replace(day=last_day)
             case "year":
-                today = date.today()
-                from_date = date(today.year, 1, 1)
-                to_date = date(today.year, 12, 31)
+                from_date = dt_date(today.year, 1, 1)
+                to_date = dt_date(today.year, 12, 31)
 
         diary_json = self.get(
             url=f"https://{self._domain}/api/svc/core/diariesquery/users/\
