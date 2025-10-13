@@ -4,13 +4,13 @@ Woffu API client module.
 """
 from __future__ import annotations
 
+import calendar
 import csv
 import json
 import logging
 import os
 import sys
 import zoneinfo
-import calendar
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
@@ -419,7 +419,7 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
         return {}
 
     def get_status(
-        self, only_running_clock: bool = False, period: str = "today"
+        self, only_running_clock: bool = False, period: str = "today",
     ) -> tuple[timedelta, bool]:
         """Return the total amount of worked hours and current sign status."""
 
@@ -523,7 +523,7 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
 
         h, m = map(int, diary_json["totalWorkedTimeFormatted"]["values"])
         logger.info(
-            "Hours worked this {}: {:02d}:{:02d}".format(period, h, m)
+            "Hours worked this {}: {:02d}:{:02d}".format(period, h, m),
         )
         total_time = timedelta(hours=h, minutes=m)
 
