@@ -10,6 +10,8 @@ import logging
 import os
 import sys
 import zoneinfo
+import calendar
+from datetime import date
 from datetime import datetime
 from datetime import timedelta
 from getpass import getpass
@@ -417,9 +419,15 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
         return {}
 
     def get_status(
-        self, only_running_clock: bool = False,
+        self, only_running_clock: bool = False, period: str = "today"
     ) -> tuple[timedelta, bool]:
         """Return the total amount of worked hours and current sign status."""
+
+        # Retrieve info for the period flags, e.g., --week, --month, --year
+        if period != "today":
+            return self._get_status_period(period), None
+
+        # Get current sign-in status and worked hours for today
         signs_in_day = self.get(url=f"{self._woffu_api_url}/api/signs").json()
 
         # Initialize a timer and the running clock boolean
@@ -486,6 +494,43 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
             f"You're currently signed {'in' if running_clock else 'out'}.",
         )
         return total_time, running_clock
+
+    def _get_status_period(self, period: str) -> timedelta:
+        match period:
+            case "week":
+                today = date.today()
+                from_date = today - timedelta(days=today.weekday())
+                to_date = from_date + timedelta(days=6)
+            case "month":
+                today = date.today()
+                from_date = today.replace(day=1)
+                last_day = calendar.monthrange(today.year, today.month)[1]
+                to_date = today.replace(day=last_day)
+            case "year":
+                today = date.today()
+                from_date = date(today.year, 1, 1)
+                to_date = date(today.year, 12, 31)
+
+        diary_json = self.get(
+            url=f"https://{self._domain}/api/svc/core/diariesquery/users/\
+{self._user_id}/diaries/summary/presence",
+            params={
+                "fromDate": from_date,
+                "toDate": to_date,
+                "showHidden": False,
+            },
+        ).json()
+
+        h, m = map(int, diary_json["totalWorkedTimeFormatted"]["values"])
+        logger.info(
+            "Hours worked this {}: {:02d}:{:02d}".format(period, h, m)
+        )
+        total_time = timedelta(hours=h, minutes=m)
+
+        h, m = diary_json["totalWorkingTimeFormatted"]["values"]
+        logger.info(f"Hours scheduled for this {period}: {h}:{m}")
+
+        return total_time
 
     def sign(self, type: str = "") -> HTTPResponse | None:
         """
