@@ -68,11 +68,34 @@ def main() -> None:
     )
 
     # ---- get_status ----
-    subparsers.add_parser(
+    st_parser = subparsers.add_parser(
         "get-status",
         help="Get current status and current day's \
             total amount of worked hours",
     )
+    st_period = st_parser.add_mutually_exclusive_group()
+    st_period.add_argument(
+        "--week",
+        dest="period",
+        action="store_const",
+        const="week",
+        help="Get current week's total hours"
+    )
+    st_period.add_argument(
+        "--month",
+        dest="period",
+        action="store_const",
+        const="month",
+        help="Get current month's total hours"
+    )
+    st_period.add_argument(
+        "--year",
+        dest="period",
+        action="store_const",
+        const="year",
+        help="Get current year's total hours"
+    )
+    st_parser.set_defaults(period="today")
 
     # ---- sign ----
     sign_parser = subparsers.add_parser(
@@ -144,7 +167,7 @@ def main() -> None:
                 sys.exit(1)
         case "get-status":
             try:
-                client.get_status()
+                client.get_status(period=args.period)
             except Exception as e:
                 print(f"❌ Error retrieving status: {e}", file=sys.stderr)
         case "sign":
