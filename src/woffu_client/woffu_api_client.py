@@ -11,7 +11,6 @@ import logging
 import os
 import sys
 import zoneinfo
-from datetime import date as dt_date
 from datetime import datetime
 from datetime import timedelta
 from getpass import getpass
@@ -495,7 +494,7 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
         return total_time, running_clock
 
     def _get_status_period(self, period: str) -> timedelta:
-        today = dt_date.today()
+        today = datetime.now().date()
         match period:
             case "week":
                 from_date = today - timedelta(days=today.weekday())
@@ -505,8 +504,8 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
                 last_day = calendar.monthrange(today.year, today.month)[1]
                 to_date = today.replace(day=last_day)
             case "year":
-                from_date = dt_date(today.year, 1, 1)
-                to_date = dt_date(today.year, 12, 31)
+                from_date = today.replace(month=1, day=1)
+                to_date = today.replace(month=12, day=31)
 
         diary_json = self.get(
             url=f"https://{self._domain}/api/svc/core/diariesquery/users/\
