@@ -406,6 +406,39 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
         self.assertEqual(result, {})
 
     @patch.object(WoffuAPIClient, "get")
+    def test_get_status_period_week(self, mock_get):
+        """Test get-status --week."""
+        self._test_get_status_period(mock_get, "week")
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_period_month(self, mock_get):
+        """Test get-status --month."""
+        self._test_get_status_period(mock_get, "month")
+
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_period_year(self, mock_get):
+        """Test get-status --year."""
+        self._test_get_status_period(mock_get, "year")
+
+    def _test_get_status_period(self, mock_get, period):
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = {
+            "totalWorkingTimeFormatted": {
+                "resource": "_HoursMinutesFormatted",
+                "values": ["225", "0"],
+            },
+            "totalWorkedTimeFormatted": {
+                "resource": "_HoursMinutesFormatted",
+                "values": ["42", "24"],
+            },
+        }
+
+        total, running = self.client.get_status(period=period)
+        self.assertIsInstance(total, timedelta)
+        self.assertIsNone(running)
+        mock_get.assert_called_once()
+
+    @patch.object(WoffuAPIClient, "get")
     def test_download_document_file_exists(self, mock_get):
         """Test download_document skips download if file already exists."""
         output_dir = self.tmp_dir / "downloads"
