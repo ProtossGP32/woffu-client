@@ -16,6 +16,7 @@ from datetime import timedelta
 from getpass import getpass
 from operator import itemgetter
 from pathlib import Path
+from typing import Optional
 
 from tzlocal import get_localzone
 
@@ -328,6 +329,12 @@ in the documents folder, not downloading again",
             from_date = current_date.strftime(DEFAULT_DATE_FORMAT)
             to_date = current_date.strftime(DEFAULT_DATE_FORMAT)
 
+        try:
+            datetime.strptime(from_date, DEFAULT_DATE_FORMAT)
+            datetime.strptime(to_date, DEFAULT_DATE_FORMAT)
+        except ValueError:
+            raise
+
         hours_response = self.get(
             url=f"https://{self._domain}/api/svc/core/diariesquery/users/\
 {self._user_id}/diaries/summary/presence",
@@ -419,7 +426,7 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
 
     def get_status(
         self, only_running_clock: bool = False, period: str = "today",
-    ) -> tuple[timedelta, bool]:
+    ) -> tuple[timedelta, Optional[bool]]:
         """Return the total amount of worked hours and current sign status."""
         # Retrieve info for the period flags, e.g., --week, --month, --year
         if period != "today":
