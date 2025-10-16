@@ -329,12 +329,6 @@ in the documents folder, not downloading again",
             from_date = current_date.strftime(DEFAULT_DATE_FORMAT)
             to_date = current_date.strftime(DEFAULT_DATE_FORMAT)
 
-        try:
-            datetime.strptime(from_date, DEFAULT_DATE_FORMAT)
-            datetime.strptime(to_date, DEFAULT_DATE_FORMAT)
-        except ValueError:
-            raise
-
         hours_response = self.get(
             url=f"https://{self._domain}/api/svc/core/diariesquery/users/\
 {self._user_id}/diaries/summary/presence",
