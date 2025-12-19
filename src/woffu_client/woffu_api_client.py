@@ -440,29 +440,10 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
         current_time = datetime.now(tz=self._localzone)
 
         for sign in signs_in_day:
-            # running_clock = sign['SignIn']
-            # sign_date = sign['TrueDate']
-            # # Split UtcTime and keep only the offset
-            # utc_offset = f"{sign['UtcTime'].split(' ')[1].zfill(3)}00"
 
             running_clock = sign.get("SignIn", False)
             sign_date = sign.get("TrueDate", None)
-            utc_time = sign.get("UtcTime", "")
-            try:
-                # Split UtcTime and keep only the offset (format '+HHMM')
-                utc_offset = f"{utc_time.split(' ')[1].zfill(3)}00"
-            except (IndexError, AttributeError):
-                utc_offset = UTC_OFFSET  # fallback to UTC
-
-            # WORKAROUND: Woffu stores incorrect UTC information
-            # when signing in from the Webapp, showing same local date
-            # on 'TrueDate' and 'UtcTime' but with no UTC offset (+0).
-            # - For the time being, we'll be using our local timezone
-            #   for any sign that comes with +0 in the UtcTime as we
-            #   suspect Woffu DB is running on a server with the same
-            #   local timezone as us.
-            if utc_offset == UTC_OFFSET:
-                utc_offset = current_time.strftime("%z")
+            utc_offset = current_time.strftime("%z")
 
             sign_date_timezoned = f"{sign_date}{utc_offset}"
 
@@ -529,15 +510,6 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
 
         # Send sign request
         logger.info("Sending sign request...")
-        # # Get the current datetime with local timezone
-        # current_time = datetime.now(tz=self._localzone)
-
-        # # Get the actual time offset in minutes
-        # utc_offset = current_time.utcoffset()
-        # if utc_offset:
-        #     timezone_offset = -(int(utc_offset.total_seconds() / 60))
-        # else:
-        #     timezone_offset = 0
 
         return self.post(
             url=f"https://{self._domain}/api/svc/signs/signs",
@@ -660,40 +632,18 @@ Using `in`/`out` keys...",
 
     def _calculate_hours_from_in_out(self, slot: dict) -> float:
         """Calculate hours from 'in' and 'out' keys of a slot."""
-        in_utc_parts = slot["in"]["utcTime"].split(" ")
-        out_utc_parts = slot["out"]["utcTime"].split(" ")
-        if len(in_utc_parts) < 2 or len(out_utc_parts) < 2:
-            logger.warning(
-                f"Skipping slot with invalid UTC times: "
-                f"in='{slot['in']['utcTime']}'"
-                f"out='{slot['out']['utcTime']}'",
-            )
-            return 0.0
+        in_dt = self._parse_datetime(slot["in"]["trueDate"])
+        out_dt = self._parse_datetime(slot["out"]["trueDate"])
 
-        in_dt = self._parse_datetime(slot["in"]["trueDate"], in_utc_parts[1])
-        out_dt = self._parse_datetime(
-            slot["out"]["trueDate"], out_utc_parts[1],
-        )
         return (out_dt - in_dt).total_seconds() / 3600
 
-    def _parse_datetime(self, date_str: str, utc_offset: str) -> datetime:
+    def _parse_datetime(self, date_str: str) -> datetime:
         """Parse date string and UTC offset safely into datetime."""
-        # Prepare current time with local timezone to use in case
-        # UTC offsets are wrong in Woffu.
+        # Prepare current time with local timezone
         # - We do it this way to take into account
         #   Daylight Saving Timezones (CET +1, CEST +2, for example).
         current_time = datetime.now(tz=self._localzone)
-
-        # WORKAROUND: Woffu stores incorrect UTC information
-        # when signing in from the Webapp, showing same local date
-        # on 'TrueDate' and 'UtcTime' but with no UTC offset (+0).
-        # - For the time being, we'll be using our local timezone
-        #   for any sign that comes with +0 in the UtcTime as we
-        #   suspect Woffu DB is running on a server with the same
-        #   local timezone as us.
-        utc_offset = f"{utc_offset.zfill(3)}00"
-        if utc_offset == UTC_OFFSET:
-            utc_offset = current_time.strftime("%z")
+        utc_offset = current_time.strftime("%z")
 
         date_timezoned = f"{date_str}{utc_offset}"
         try:
