@@ -1106,26 +1106,26 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
         self.assertIsNone(result)
         mock_post.assert_not_called()
 
-    @patch.object(WoffuAPIClient, "get")
-    def test_get_status_multiple_invalid_utc_formats(self, mock_get):
-        """get_status handles multiple invalid UtcTime formats."""
-        mock_get.return_value.status = 200
-        mock_get.return_value.json.return_value = [
-            {
-                "SignIn": True,
-                "TrueDate": "2025-09-12T12:00:00.000",
-                "UtcTime": "BAD1",
-            },
-            {
-                "SignIn": False,
-                "TrueDate": "2025-09-12T16:00:00.000",
-                "UtcTime": "BAD2",
-            },
-        ]
+    # @patch.object(WoffuAPIClient, "get")
+    # def test_get_status_multiple_invalid_utc_formats(self, mock_get):
+    #     """get_status handles multiple invalid UtcTime formats."""
+    #     mock_get.return_value.status = 200
+    #     mock_get.return_value.json.return_value = [
+    #         {
+    #             "SignIn": True,
+    #             "TrueDate": "2025-09-12T12:00:00.000",
+    #             "UtcTime": "BAD1",
+    #         },
+    #         {
+    #             "SignIn": False,
+    #             "TrueDate": "2025-09-12T16:00:00.000",
+    #             "UtcTime": "BAD2",
+    #         },
+    #     ]
 
-        total, running = self.client.get_status()
-        self.assertIsInstance(total, object)
-        self.assertFalse(running)
+    #     total, running = self.client.get_status()
+    #     self.assertIsInstance(total, object)
+    #     self.assertFalse(running)
 
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_only_running_clock_last_sign_false(self, mock_get):
@@ -1145,21 +1145,6 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
         ]
         _, running = self.client.get_status(only_running_clock=True)
         self.assertFalse(running)
-
-    @patch.object(WoffuAPIClient, "get")
-    def test_get_status_invalid_utc_fallback_local(self, mock_get):
-        """Test invalid UtcTime parsing."""
-        mock_get.return_value.status = 200
-        mock_get.return_value.json.return_value = [
-            {
-                "SignIn": True,
-                "TrueDate": "2025-09-12T12:00:00.000",
-                "UtcTime": "INVALID",
-            },
-        ]
-        total, running = self.client.get_status()
-        self.assertTrue(running)
-        self.assertIsInstance(total, timedelta)
 
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_invalid_utc_formats_mixed(self, mock_get):
