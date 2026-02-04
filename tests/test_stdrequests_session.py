@@ -801,9 +801,8 @@ class TestSession(TestCase):
 
     def test_request_defensive_fallback_range_empty(self):
         """Test defensive fallback on requests."""
-        # Save original range for later restoration
         import builtins
-
+        # Save original range for later restoration
         original_range = builtins.range
 
         # Define a local 'range' that yields nothing
@@ -814,7 +813,6 @@ class TestSession(TestCase):
         try:
             # Override builtins.range locally inside this test
             builtins.range = empty_range
-
             with self.assertRaises(RuntimeError):
                 self.session.request("GET", "https://example.com")
         finally:
