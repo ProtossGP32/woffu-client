@@ -799,13 +799,10 @@ class TestSession(TestCase):
         finally:
             self.session.opener.open = original_open
 
-    def test_request_defensive_fallback_range_empty(self):
+    def test_request_defensive_fallback_retries_empty(self):
         """Test defensive fallback on requests."""
-        import builtins  # noqa:F401
-
-        with patch('builtins.range', return_value=iter(())):
-            with self.assertRaises(RuntimeError):
-                self.session.request("GET", "https://example.com")
+        with self.assertRaises(RuntimeError):
+            self.session.request("GET", "https://example.com", retries=0)
 
     def test_http_error_with_other_codes(self) -> None:
         """Test HTTPError status codes."""
