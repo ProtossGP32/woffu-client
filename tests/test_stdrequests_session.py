@@ -801,6 +801,8 @@ class TestSession(TestCase):
 
     def test_request_defensive_fallback_range_empty(self):
         """Test defensive fallback on requests."""
+        import builtins  # noqa:F401
+
         with patch('builtins.range', return_value=iter(())):
             with self.assertRaises(RuntimeError):
                 self.session.request("GET", "https://example.com")
