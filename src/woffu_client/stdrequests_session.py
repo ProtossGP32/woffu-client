@@ -300,6 +300,7 @@ class Session:
     ) -> HTTPResponse:
         """Perform the HTTP request with retries and return HTTPResponse."""
         last_exc: Optional[Exception] = None
+
         for attempt in range(retries):
             try:
                 req = urllib.request.Request(
@@ -326,6 +327,7 @@ class Session:
                     continue
                 raise last_exc
 
+        # This should never be reached due to the logic above
         raise RuntimeError(
             "Request failed unexpectedly without raising an exception",
         )
