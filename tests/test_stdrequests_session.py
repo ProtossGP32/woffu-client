@@ -801,23 +801,9 @@ class TestSession(TestCase):
 
     def test_request_defensive_fallback_range_empty(self):
         """Test defensive fallback on requests."""
-        import builtins
-        # Save original range for later restoration
-        original_range = builtins.range
-
-        # Define a local 'range' that yields nothing
-        # to simulate empty retry loop
-        def empty_range(*args, **kwargs):
-            return iter(())
-
-        try:
-            # Override builtins.range locally inside this test
-            builtins.range = empty_range
+        with patch('builtins.range', return_value=iter(())):
             with self.assertRaises(RuntimeError):
                 self.session.request("GET", "https://example.com")
-        finally:
-            # Restore original range
-            builtins.range = original_range
 
     def test_http_error_with_other_codes(self) -> None:
         """Test HTTPError status codes."""
