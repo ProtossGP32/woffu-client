@@ -67,23 +67,65 @@ class WoffuCLITest(unittest.TestCase):
         self.assertIn("❌ Error downloading files: Boom!", error_output)
 
     @patch("src.woffu_client.cli.WoffuAPIClient")
-    def test_get_status_success(self, mock_client_cls):
-        """Test status retrieval success."""
+    def test_get_status_today(self, mock_client_cls):
+        """Test get-status without a flag (today)."""
+        self._test_get_status(mock_client_cls, None)
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_get_status_week(self, mock_client_cls):
+        """Test get-status with --week flag."""
+        self._test_get_status(mock_client_cls, "--week")
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_get_status_month(self, mock_client_cls):
+        """Test get-status with --month flag."""
+        self._test_get_status(mock_client_cls, "--month")
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_get_status_year(self, mock_client_cls):
+        """Test get-status with --year flag."""
+        self._test_get_status(mock_client_cls, "--year")
+
+    def _test_get_status(self, mock_client_cls, flag):
         mock_client = mock_client_cls.return_value
         mock_client.get_status.return_value = None
 
-        with patch.object(sys, "argv", ["cli", "get-status"]):
+        argv = ["cli", "get-status"]
+        if flag:
+            argv.append(flag)
+        with patch.object(sys, "argv", argv):
             cli.main()
-
         mock_client.get_status.assert_called_once()
 
     @patch("src.woffu_client.cli.WoffuAPIClient")
-    def test_get_status_failure(self, mock_client_cls):
-        """Test status retrieval failure."""
+    def test_get_status_failure_today(self, mock_client_cls):
+        """Test failure for get-status without a flag (today)."""
+        self._test_get_status_failure(mock_client_cls, None)
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_get_status_failure_week(self, mock_client_cls):
+        """Test failure for get-status with --week flag."""
+        self._test_get_status_failure(mock_client_cls, "--week")
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_get_status_failure_month(self, mock_client_cls):
+        """Test failure for get-status with --month flag."""
+        self._test_get_status_failure(mock_client_cls, "--month")
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_get_status_failure_year(self, mock_client_cls):
+        """Test failure for get-status with --year flag."""
+        self._test_get_status_failure(mock_client_cls, "--year")
+
+    def _test_get_status_failure(self, mock_client_cls, flag):
         mock_client = mock_client_cls.return_value
         mock_client.get_status.side_effect = Exception("status failed")
 
-        with patch.object(sys, "argv", ["cli", "get-status"]):
+        argv = ["cli", "get-status"]
+        if flag:
+            argv.append(flag)
+
+        with patch.object(sys, "argv", argv):
             cli.main()
 
         error_output = cast(StringIO, sys.stderr).getvalue()

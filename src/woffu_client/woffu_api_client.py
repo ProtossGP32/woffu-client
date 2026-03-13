@@ -4,6 +4,7 @@ Woffu API client module.
 """
 from __future__ import annotations
 
+import calendar
 import csv
 import json
 import logging
@@ -15,6 +16,7 @@ from datetime import timedelta
 from getpass import getpass
 from operator import itemgetter
 from pathlib import Path
+from typing import Optional
 
 from tzlocal import get_localzone
 
@@ -417,9 +419,14 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
         return {}
 
     def get_status(
-        self, only_running_clock: bool = False,
-    ) -> tuple[timedelta, bool]:
+        self, only_running_clock: bool = False, period: str = "today",
+    ) -> tuple[timedelta, Optional[bool]]:
         """Return the total amount of worked hours and current sign status."""
+        # Retrieve info for the period flags, e.g., --week, --month, --year
+        if period != "today":
+            return self._get_status_period(period), None
+
+        # Get current sign-in status and worked hours for today
         signs_in_day = self.get(url=f"{self._woffu_api_url}/api/signs").json()
 
         # Initialize a timer and the running clock boolean
@@ -486,6 +493,41 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
             f"You're currently signed {'in' if running_clock else 'out'}.",
         )
         return total_time, running_clock
+
+    def _get_status_period(self, period: str) -> timedelta:
+        today = datetime.now().date()
+        match period:
+            case "week":
+                from_date = today - timedelta(days=today.weekday())
+                to_date = from_date + timedelta(days=6)
+            case "month":
+                from_date = today.replace(day=1)
+                last_day = calendar.monthrange(today.year, today.month)[1]
+                to_date = today.replace(day=last_day)
+            case "year":
+                from_date = today.replace(month=1, day=1)
+                to_date = today.replace(month=12, day=31)
+
+        diary_json = self.get(
+            url=f"https://{self._domain}/api/svc/core/diariesquery/users/\
+{self._user_id}/diaries/summary/presence",
+            params={
+                "fromDate": from_date,
+                "toDate": to_date,
+                "showHidden": False,
+            },
+        ).json()
+
+        h, m = map(int, diary_json["totalWorkedTimeFormatted"]["values"])
+        logger.info(
+            "Hours worked this {}: {:02d}:{:02d}".format(period, h, m),
+        )
+        total_time = timedelta(hours=h, minutes=m)
+
+        h, m = diary_json["totalWorkingTimeFormatted"]["values"]
+        logger.info(f"Hours scheduled for this {period}: {h}:{m}")
+
+        return total_time
 
     def sign(self, type: str = "") -> HTTPResponse | None:
         """
