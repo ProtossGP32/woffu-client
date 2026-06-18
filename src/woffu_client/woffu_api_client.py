@@ -490,27 +490,32 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
             # Retrieve theoretical schedule from presence query
             presence = self._get_presence()
             # Theoretical schedule
-            theoretical_schedule = presence[0]["workingTimeFormatted"]
-            # Theoretical schedule hours:
-            match theoretical_schedule['resource']:
-                case "_HoursMinutesFormatted":
-                    hours, minutes = theoretical_schedule['values']
-                    seconds = 0
-                    theoretical_time = timedelta(
-                        hours=int(hours),
-                        minutes=int(minutes),
-                        seconds=seconds,
-                    )
-                case _:
-                    logger.error(
-                        f"Invalid time format: \
-                            {theoretical_schedule['resource']}",
-                    )
-            logger.info(
-                "Theoretical schedule today: {:02d}:{:02d}:{:02d}".format(
-                    int(hours), int(minutes), int(seconds),
-                ),
-            )
+            theoretical_schedule = presence[0].get("workingTimeFormatted", {})
+            if theoretical_schedule:
+                # Theoretical schedule hours:
+                match theoretical_schedule['resource']:
+                    case "_HoursMinutesFormatted":
+                        hours, minutes = theoretical_schedule['values']
+                        seconds = 0
+                        theoretical_time = timedelta(
+                            hours=int(hours),
+                            minutes=int(minutes),
+                            seconds=seconds,
+                        )
+                    case "_HoursFormatted":
+                        theoretical_time = timedelta(
+                            hours=int(theoretical_schedule['values'][0]),
+                        )
+                    case _:
+                        logger.error(
+                            f"Invalid time format: \
+                                {theoretical_schedule['resource']}",
+                        )
+                logger.info(
+                    "Theoretical schedule today: {:02d}:{:02d}:{:02d}".format(
+                        int(hours), int(minutes), int(seconds),
+                    ),
+                )
 
         return total_time, running_clock, theoretical_time
 
@@ -618,16 +623,23 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
 
     def _flatten_working_time(self, time_formatted: dict) -> float:
         """Return formatted times as float values."""
-        match time_formatted["resource"]:
-            case "_HoursMinutesFormatted":
-                return float(time_formatted["values"][0]) \
-                    + float(time_formatted["values"][1])/60
-            case _:
-                logger.error(
-                    f"Invalid time format resource: \
-{time_formatted['resource']}",
-                )
-                return -1.0
+        if time_formatted:
+            time_format = time_formatted.get("resource", "")
+            match time_format:
+                case "_HoursMinutesFormatted":
+                    return float(time_formatted["values"][0]) \
+                        + float(time_formatted["values"][1])/60
+                case "_HoursFormatted":
+                    return float(time_formatted["values"][0])
+                case _:
+                    logger.error(
+                        f"Invalid time format resource: \
+    {time_formatted['resource']}",
+                    )
+                    return -1.0
+        else:
+            # Weekends don't have WorkingTimeFormatted key, return 0.0
+            return 0.0
 
     def _build_event_report(self, diary: dict) -> dict:
         """Build the report for a single diary entry."""
@@ -636,7 +648,7 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
 
         # Theoretical schedule
         event_report["theoretical_schedule"] = self._flatten_working_time(
-            diary["workingTimeFormatted"],
+            diary.get("workingTimeFormatted", {}),
         )
 
         # Work hours from slots
