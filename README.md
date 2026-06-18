@@ -47,6 +47,12 @@ actions:
     summary-report      Summary report of work hours for a given time window
 ```
 
+Each action might have its own arguments, check them by running:
+
+```bash
+woffu-cli <action-name> -h
+```
+
 ## Contributing
 
 ### GitFlow convention
