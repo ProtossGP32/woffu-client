@@ -1356,27 +1356,6 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
         self.assertIsNone(result)
         mock_post.assert_not_called()
 
-    # @patch.object(WoffuAPIClient, "get")
-    # def test_get_status_multiple_invalid_utc_formats(self, mock_get):
-    #     """get_status handles multiple invalid UtcTime formats."""
-    #     mock_get.return_value.status = 200
-    #     mock_get.return_value.json.return_value = [
-    #         {
-    #             "SignIn": True,
-    #             "TrueDate": "2025-09-12T12:00:00.000",
-    #             "UtcTime": "BAD1",
-    #         },
-    #         {
-    #             "SignIn": False,
-    #             "TrueDate": "2025-09-12T16:00:00.000",
-    #             "UtcTime": "BAD2",
-    #         },
-    #     ]
-
-    #     total, running = self.client.get_status()
-    #     self.assertIsInstance(total, object)
-    #     self.assertFalse(running)
-
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_only_running_clock_last_sign_false(self, mock_get):
         """Test last status being signed out."""
