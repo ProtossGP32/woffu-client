@@ -68,10 +68,16 @@ def main() -> None:
     )
 
     # ---- get_status ----
-    subparsers.add_parser(
+    status_parser = subparsers.add_parser(
         "get-status",
         help="Get current status and current day's \
             total amount of worked hours",
+    )
+
+    status_parser.add_argument(
+        "--extend",
+        action="store_true",
+        help="Shows additional info such as theoretical schedule.",
     )
 
     # ---- sign ----
@@ -89,7 +95,7 @@ def main() -> None:
             'in', 'out' or 'any' (default: 'any')",
     )
 
-    # ---- get_status ----
+    # ---- request_credentials ----
     subparsers.add_parser(
         "request-credentials",
         help="Request credentials from Woffu. For non-interactive sessions, \
@@ -97,7 +103,7 @@ def main() -> None:
                 WOFFU_USERNAME and WOFFU_PASSWORD.",
     )
 
-    # ---- get_status ----
+    # ---- summary_report ----
     summary_report_parser = subparsers.add_parser(
         "summary-report",
         help="Summary report of work hours for a given time window",
@@ -144,7 +150,7 @@ def main() -> None:
                 sys.exit(1)
         case "get-status":
             try:
-                client.get_status()
+                client.get_status(extend=args.extend)
             except Exception as e:
                 print(f"❌ Error retrieving status: {e}", file=sys.stderr)
         case "sign":
