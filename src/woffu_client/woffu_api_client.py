@@ -417,20 +417,20 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
         return {}
 
     def get_status(
-        self, only_running_clock: bool = False,
-    ) -> tuple[timedelta, bool]:
+        self, extend: bool = False, only_running_clock: bool = False,
+    ) -> tuple[timedelta, bool, timedelta]:
         """Return the total amount of worked hours and current sign status."""
         signs_in_day = self.get(url=f"{self._woffu_api_url}/api/signs").json()
 
         # Initialize a timer and the running clock boolean
-        total_time = timedelta()
-        running_clock = False
-
-        # Just return the las sign status
+        total_time: timedelta = timedelta()
+        running_clock: bool = False
+        theoretical_time: timedelta = timedelta()
+        # Just return the last sign status
         if only_running_clock:
             return total_time, (
                 signs_in_day[-1]["SignIn"] if signs_in_day else running_clock
-            )
+            ), theoretical_time
 
         # Go through all the signs.
         # Prepare current time with local timezone to use in case
@@ -485,7 +485,39 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
         logger.info(
             f"You're currently signed {'in' if running_clock else 'out'}.",
         )
-        return total_time, running_clock
+
+        if extend:
+            # Retrieve theoretical schedule from presence query
+            presence = self._get_presence()
+            # Theoretical schedule
+            theoretical_schedule = presence[0].get("workingTimeFormatted", {})
+            if theoretical_schedule:
+                # Theoretical schedule hours:
+                match theoretical_schedule['resource']:
+                    case "_HoursMinutesFormatted":
+                        hours, minutes = theoretical_schedule['values']
+                        seconds = 0
+                        theoretical_time = timedelta(
+                            hours=int(hours),
+                            minutes=int(minutes),
+                            seconds=seconds,
+                        )
+                    case "_HoursFormatted":
+                        theoretical_time = timedelta(
+                            hours=int(theoretical_schedule['values'][0]),
+                        )
+                    case _:
+                        logger.error(
+                            f"Invalid time format: \
+                                {theoretical_schedule['resource']}",
+                        )
+                logger.info(
+                    "Theoretical schedule today: {:02d}:{:02d}:{:02d}".format(
+                        int(hours), int(minutes), int(seconds),
+                    ),
+                )
+
+        return total_time, running_clock, theoretical_time
 
     def sign(self, type: str = "") -> HTTPResponse | None:
         """
@@ -496,7 +528,7 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
             it will sign in/out without checking the current status.
         """
         # Get current sign status
-        _, signed_in = self.get_status(only_running_clock=True)
+        _, signed_in, _ = self.get_status(only_running_clock=True)
 
         # Evaluate current sign value against desired
         match type:
@@ -589,10 +621,35 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
 
         return summary_report
 
+    def _flatten_working_time(self, time_formatted: dict) -> float:
+        """Return formatted times as float values."""
+        if time_formatted:
+            time_format = time_formatted.get("resource", "")
+            match time_format:
+                case "_HoursMinutesFormatted":
+                    return float(time_formatted["values"][0]) \
+                        + float(time_formatted["values"][1])/60
+                case "_HoursFormatted":
+                    return float(time_formatted["values"][0])
+                case _:
+                    logger.error(
+                        f"Invalid time format resource: \
+    {time_formatted['resource']}",
+                    )
+                    return -1.0
+        else:
+            # Weekends don't have WorkingTimeFormatted key, return 0.0
+            return 0.0
+
     def _build_event_report(self, diary: dict) -> dict:
         """Build the report for a single diary entry."""
         event_report: dict = {}
         diary_summary_id = diary["diarySummaryId"]
+
+        # Theoretical schedule
+        event_report["theoretical_schedule"] = self._flatten_working_time(
+            diary.get("workingTimeFormatted", {}),
+        )
 
         # Work hours from slots
         slots = self._get_workday_slots(diary_summary_id=diary_summary_id)

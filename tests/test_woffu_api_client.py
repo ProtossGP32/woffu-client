@@ -357,9 +357,12 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
             },
         ]
 
-        total, running = self.client.get_status(only_running_clock=True)
+        total, running, theoretical_time = self.client.get_status(
+            only_running_clock=True,
+        )
         self.assertIsInstance(total, object)
         self.assertFalse(running)  # Last sign False
+        self.assertIsInstance(theoretical_time, object)
 
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_empty_signs(self, mock_get):
@@ -367,9 +370,10 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
         mock_get.return_value.status = 200
         mock_get.return_value.json.return_value = []
 
-        total, running = self.client.get_status()
+        total, running, theoretical_time = self.client.get_status()
         self.assertEqual(total.total_seconds(), 0)
         self.assertFalse(running)
+        self.assertEqual(theoretical_time, timedelta(0))
 
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_utc_offset_edge_case(self, mock_get):
@@ -383,9 +387,10 @@ class TestWoffuAPIDownload(BaseWoffuAPITest):
             },
         ]
 
-        total, running = self.client.get_status()
+        total, running, theoretical_time = self.client.get_status()
         self.assertIsInstance(total, object)
         self.assertTrue(running)
+        self.assertEqual(theoretical_time, timedelta(0))
 
     @patch.object(WoffuAPIClient, "get")
     def test_get_diary_hour_types_empty_response(self, mock_get):
@@ -784,6 +789,10 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
             "date": "2025-09-12",
             "diarySummaryId": 1,
             "diaryHourTypes": [],
+            "workingTimeFormatted": {
+                "resource": "_HoursMinutesFormatted",
+                "values": ['6', '30'],
+            },
         }
         mock_slots.return_value = [
             {
@@ -820,6 +829,10 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
             "date": "2025-09-12",
             "diarySummaryId": 1,
             "diaryHourTypes": [],
+            "workingTimeFormatted": {
+                "resource": "_HoursMinutesFormatted",
+                "values": ['6', '30'],
+            },
         }
         mock_slots.return_value = [
             {
@@ -848,6 +861,10 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
             "date": "2025-09-30",
             "diarySummaryId": 1,
             "diaryHourTypes": [],
+            "workingTimeFormatted": {
+                "resource": "_HoursMinutesFormatted",
+                "values": ['6', '30'],
+            },
         }
         mock_slots.return_value = [
             {
@@ -881,6 +898,10 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
             "date": "2025-09-30",
             "diarySummaryId": 1,
             "diaryHourTypes": [],
+            "workingTimeFormatted": {
+                "resource": "_HoursMinutesFormatted",
+                "values": ['6', '30'],
+            },
         }
         mock_slots.return_value = [
             {
@@ -915,6 +936,10 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
             "date": "2025-09-12",
             "diarySummaryId": 1,
             "diaryHourTypes": [{"name": "A"}],
+            "workingTimeFormatted": {
+                "resource": "_HoursMinutesFormatted",
+                "values": ['6', '30'],
+            },
         }
         mock_presence.return_value = [diary]
         mock_slots.return_value = []
@@ -932,6 +957,10 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
             "date": "2025-09-12",
             "diarySummaryId": 1,
             "diaryHourTypes": [],
+            "workingTimeFormatted": {
+                "resource": "_HoursMinutesFormatted",
+                "values": ['6', '30'],
+            },
         }
         mock_presence.return_value = [diary]
         mock_slots.return_value = [
@@ -953,6 +982,10 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
             "date": "2025-09-12",
             "diarySummaryId": 1,
             "diaryHourTypes": [{"name": "A"}],
+            "workingTimeFormatted": {
+                "resource": "_HoursMinutesFormatted",
+                "values": ['6', '30'],
+            },
         }
         mock_presence.return_value = [diary]
         mock_slots.return_value = []
@@ -972,6 +1005,10 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
             "date": "2025-09-12",
             "diarySummaryId": 1,
             "diaryHourTypes": [],
+            "workingTimeFormatted": {
+                "resource": "_HoursMinutesFormatted",
+                "values": ['6', '30'],
+            },
         }
         mock_presence.return_value = [diary]
         mock_slots.return_value = [
@@ -985,10 +1022,99 @@ class TestWoffuAPISummaryDiary(BaseWoffuAPITest):
         # Work hours should be 0 because in/out parsing failed
         self.assertAlmostEqual(result["2025-09-12"]["work_hours"], 0)
 
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_theoretical_schedule(
+        self, mock_slots, mock_presence,
+    ):
+        """get_summary_report handles 'workingTimeFormatted' key."""
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [{"name": "A"}],
+            "workingTimeFormatted": {
+                "resource": "_HoursMinutesFormatted",
+                "values": ['6', '30'],
+            },
+        }
+        mock_presence.return_value = [diary]
+        mock_slots.return_value = []
+        result = self.client.get_summary_report("2025-09-12", "2025-09-12")
+        print(result["2025-09-12"]["theoretical_schedule"])
+        self.assertAlmostEqual(
+            result["2025-09-12"]["theoretical_schedule"], 6.5,
+        )
+
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_theoretical_schedule_only_hours(
+        self, mock_slots, mock_presence,
+    ):
+        """get_summary_report handles 'workingTimeFormatted' key."""
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [{"name": "A"}],
+            "workingTimeFormatted": {
+                "resource": "_HoursFormatted",
+                "values": ['7'],
+            },
+        }
+        mock_presence.return_value = [diary]
+        mock_slots.return_value = []
+        result = self.client.get_summary_report("2025-09-12", "2025-09-12")
+        print(result["2025-09-12"]["theoretical_schedule"])
+        self.assertAlmostEqual(
+            result["2025-09-12"]["theoretical_schedule"], 7,
+        )
+
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_theoretical_schedule_weekend(
+        self, mock_slots, mock_presence,
+    ):
+        """get_summary_report handles missing 'workingTimeFormatted' key."""
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [{"name": "A"}],
+        }
+        mock_presence.return_value = [diary]
+        mock_slots.return_value = []
+        result = self.client.get_summary_report("2025-09-12", "2025-09-12")
+        print(result["2025-09-12"]["theoretical_schedule"])
+        self.assertAlmostEqual(
+            result["2025-09-12"]["theoretical_schedule"], 0.0,
+        )
+
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "_get_workday_slots")
+    def test_get_summary_report_theoretical_schedule_incorrect_format(
+        self, mock_slots, mock_presence,
+    ):
+        """get_summary_report handles incorrect 'workingTimeFormatted' key."""
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [{"name": "A"}],
+            "workingTimeFormatted": {
+                "resource": "_InvalidFormatted",
+                "values": ['6', '30'],
+            },
+        }
+        mock_presence.return_value = [diary]
+        mock_slots.return_value = []
+        result = self.client.get_summary_report("2025-09-12", "2025-09-12")
+        print(result["2025-09-12"]["theoretical_schedule"])
+        self.assertAlmostEqual(
+            result["2025-09-12"]["theoretical_schedule"], -1.0,
+        )
 
 # -------------
 # Status & Sign
 # -------------
+
+
 class TestWoffuAPIStatusSign(BaseWoffuAPITest):
     """Test class for WoffuAPIClient Status and Sign calls."""
 
@@ -1074,9 +1200,130 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
             },
         ]
 
-        total, running = self.client.get_status()
+        total, running, theoretical_time = self.client.get_status()
         self.assertIsInstance(total, object)  # timedelta
         self.assertIsInstance(running, bool)
+        self.assertIsInstance(theoretical_time, object)  # timedelta
+
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_extend(self, mock_get, mock_presence):
+        """Test get_status returns total_time and running_clock."""
+        # Simulate signs with correct UtcTime format
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = [
+            {
+                "SignIn": True,
+                "TrueDate": "2025-09-12T12:00:00.000",
+                "UtcTime": "12:00:00 +01",
+            },
+        ]
+
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [],
+            "workingTimeFormatted": {
+                "resource": "_HoursMinutesFormatted",
+                "values": ['6', '30'],
+            },
+        }
+        mock_presence.return_value = [diary]
+
+        total, running, theoretical_time = self.client.get_status(extend=True)
+        self.assertIsInstance(total, object)  # timedelta
+        self.assertIsInstance(running, bool)
+        self.assertIsInstance(theoretical_time, object)  # timedelta
+        self.assertEqual(theoretical_time, timedelta(hours=6, minutes=30))
+
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_extend_hours(self, mock_get, mock_presence):
+        """Test get_status returns total_time and running_clock."""
+        # Simulate signs with correct UtcTime format
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = [
+            {
+                "SignIn": True,
+                "TrueDate": "2025-09-12T12:00:00.000",
+                "UtcTime": "12:00:00 +01",
+            },
+        ]
+
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [],
+            "workingTimeFormatted": {
+                "resource": "_HoursFormatted",
+                "values": ['7'],
+            },
+        }
+        mock_presence.return_value = [diary]
+
+        total, running, theoretical_time = self.client.get_status(extend=True)
+        self.assertIsInstance(total, object)  # timedelta
+        self.assertIsInstance(running, bool)
+        self.assertIsInstance(theoretical_time, object)  # timedelta
+        self.assertEqual(theoretical_time, timedelta(hours=7))
+
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_extend_weekend(self, mock_get, mock_presence):
+        """Test get_status returns total_time and running_clock."""
+        # Simulate signs with correct UtcTime format
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = [
+            {
+                "SignIn": True,
+                "TrueDate": "2025-09-12T12:00:00.000",
+                "UtcTime": "12:00:00 +01",
+            },
+        ]
+
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [],
+        }
+        mock_presence.return_value = [diary]
+
+        total, running, theoretical_time = self.client.get_status(extend=True)
+        self.assertIsInstance(total, object)  # timedelta
+        self.assertIsInstance(running, bool)
+        self.assertIsInstance(theoretical_time, object)  # timedelta
+        self.assertEqual(theoretical_time, timedelta(0))
+
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_extend_invalid_format(self, mock_get, mock_presence):
+        """Test get_status returns total_time and running_clock."""
+        # Simulate signs with correct UtcTime format
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = [
+            {
+                "SignIn": True,
+                "TrueDate": "2025-09-12T12:00:00.000",
+                "UtcTime": "12:00:00 +01",
+            },
+        ]
+
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [],
+            "workingTimeFormatted": {
+                "resource": "_InvalidFormatted",
+                "values": ['6', '30'],
+            },
+        }
+        mock_presence.return_value = [diary]
+
+        total, running, theoretical_time = self.client.get_status(extend=True)
+        self.assertIsInstance(total, object)  # timedelta
+        self.assertIsInstance(running, bool)
+        self.assertIsInstance(theoretical_time, object)  # timedelta
+        self.assertEqual(theoretical_time, timedelta())
 
     @patch.object(WoffuAPIClient, "get")
     @patch.object(WoffuAPIClient, "post")
@@ -1095,7 +1342,10 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
             self.client.sign(type="in")
 
     @patch.object(
-        WoffuAPIClient, "get_status", return_value=(timedelta(0), True),
+        WoffuAPIClient, "get_status", return_value=(
+            timedelta(0),
+            True, timedelta(0),
+        ),
     )
     @patch.object(WoffuAPIClient, "post")
     def test_sign_user_already_signed_returns_none(
@@ -1105,27 +1355,6 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
         result = self.client.sign(type="in")
         self.assertIsNone(result)
         mock_post.assert_not_called()
-
-    # @patch.object(WoffuAPIClient, "get")
-    # def test_get_status_multiple_invalid_utc_formats(self, mock_get):
-    #     """get_status handles multiple invalid UtcTime formats."""
-    #     mock_get.return_value.status = 200
-    #     mock_get.return_value.json.return_value = [
-    #         {
-    #             "SignIn": True,
-    #             "TrueDate": "2025-09-12T12:00:00.000",
-    #             "UtcTime": "BAD1",
-    #         },
-    #         {
-    #             "SignIn": False,
-    #             "TrueDate": "2025-09-12T16:00:00.000",
-    #             "UtcTime": "BAD2",
-    #         },
-    #     ]
-
-    #     total, running = self.client.get_status()
-    #     self.assertIsInstance(total, object)
-    #     self.assertFalse(running)
 
     @patch.object(WoffuAPIClient, "get")
     def test_get_status_only_running_clock_last_sign_false(self, mock_get):
@@ -1143,7 +1372,7 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
                 "UtcTime": "16:00:00 +01",
             },
         ]
-        _, running = self.client.get_status(only_running_clock=True)
+        _, running, _ = self.client.get_status(only_running_clock=True)
         self.assertFalse(running)
 
     @patch.object(WoffuAPIClient, "get")
@@ -1162,9 +1391,10 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
                 "UtcTime": "BAD2",
             },
         ]
-        total, running = self.client.get_status()
+        total, running, theoretical_time = self.client.get_status()
         self.assertIsInstance(total, timedelta)
         self.assertFalse(running)
+        self.assertIsInstance(theoretical_time, timedelta)
 
 
 class TestWoffuAPICSVExport(BaseWoffuAPITest):
@@ -1181,8 +1411,12 @@ class TestWoffuAPICSVExport(BaseWoffuAPITest):
                     "2025-01-01": {
                         "Extr. a compensar": 0.5,
                         "work_hours": 8.5,
+                        "theoretical_schedule": 8,
                     },
-                    "2025-01-02": {"work_hours": 7.5},
+                    "2025-01-02": {
+                        "work_hours": 7.5,
+                        "theoretical_schedule": 7.5,
+                    },
                 },
                 "",  # from_date
                 "",  # to_date
@@ -1194,8 +1428,12 @@ class TestWoffuAPICSVExport(BaseWoffuAPITest):
                     "2025-01-01": {
                         "Extr. a compensar": 1.5,
                         "work_hours": 9.0,
+                        "theoretical_schedule": 7.5,
                     },
-                    "2025-01-05": {"work_hours": 6.5},
+                    "2025-01-05": {
+                        "work_hours": 6.5,
+                        "theoretical_schedule": 6.5,
+                    },
                 },
                 "2025-01-01",
                 "2025-01-05",
@@ -1236,7 +1474,12 @@ class TestWoffuAPICSVExport(BaseWoffuAPITest):
             csv_content = fake_csv_buffer.read()
 
             if expected_rows:
-                for header in ["Extr. a compensar", "work_hours", "date"]:
+                for header in [
+                    "Extr. a compensar",
+                    "work_hours",
+                    "theoretical_schedule",
+                    "date",
+                ]:
                     self.assertIn(header, csv_content)
                 for row in expected_rows:
                     self.assertIn(row, csv_content)
@@ -1265,7 +1508,11 @@ class TestWoffuAPICSVExport(BaseWoffuAPITest):
     ):
         """Specifically test exporting CSV using a custom delimiter (';')."""
         summary_report = {
-            "2025-01-01": {"Extr. a compensar": 0.5, "work_hours": 8.5},
+            "2025-01-01": {
+                "Extr. a compensar": 0.5,
+                "work_hours": 8.5,
+                "theoretical_schedule": 8,
+            },
         }
         fake_csv_buffer = StringIO()
         mock_open.return_value.__enter__.return_value = fake_csv_buffer
@@ -1281,4 +1528,5 @@ class TestWoffuAPICSVExport(BaseWoffuAPITest):
         self.assertIn("2025-01-01", csv_content)
         self.assertIn("Extr. a compensar", csv_content)
         self.assertIn("work_hours", csv_content)
+        self.assertIn("theoretical_schedule", csv_content)
         mock_logger.info.assert_called_once()
