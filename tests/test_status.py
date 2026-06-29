@@ -46,6 +46,11 @@ class ParseJsonTest(unittest.TestCase):
         status = parse_json({"error": "not configured"})
         self.assertEqual(status.error, "not configured")
 
+    def test_configured_defaults_true(self):
+        """A payload without a configured key is treated as configured."""
+        status = parse_json({"signed_in": True, "hours_worked": "01:00:00"})
+        self.assertTrue(status.configured)
+
 
 class ParseTextTest(unittest.TestCase):
     """Unit tests for the status.parse_text() fallback."""
@@ -86,10 +91,11 @@ class WoffuStatusTest(unittest.TestCase):
     """Unit tests for the WoffuStatus dataclass defaults."""
 
     def test_optional_fields_default(self):
-        """theoretical_hours and error default to None."""
+        """theoretical_hours/error default to None and configured to True."""
         status = WoffuStatus(signed_in=True, hours_worked="01:00:00")
         self.assertIsNone(status.theoretical_hours)
         self.assertIsNone(status.error)
+        self.assertTrue(status.configured)
 
 
 if __name__ == "__main__":

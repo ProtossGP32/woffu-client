@@ -9,12 +9,18 @@ from dataclasses import dataclass
 
 @dataclass
 class WoffuStatus:
-    """Current Woffu sign state, as rendered by the applet."""
+    """Current Woffu sign state, as rendered by the applet.
+
+    `configured` is False when the CLI has no usable credentials yet, so the
+    applet can show an actionable "run request-credentials" hint instead of a
+    misleading signed-out state.
+    """
 
     signed_in: bool
     hours_worked: str
     theoretical_hours: str | None = None
     error: str | None = None
+    configured: bool = True
 
 
 def parse_json(data: dict) -> WoffuStatus:
@@ -24,6 +30,7 @@ def parse_json(data: dict) -> WoffuStatus:
         hours_worked=data.get("hours_worked", "00:00:00"),
         theoretical_hours=data.get("theoretical_hours"),
         error=data.get("error"),
+        configured=data.get("configured", True),
     )
 
 

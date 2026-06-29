@@ -183,6 +183,11 @@ def main() -> None:
                     client.get_status(extend=args.extend)
             except Exception as e:
                 logging.disable(logging.NOTSET)
+                if args.json:
+                    # Emit a structured error so the applet can distinguish a
+                    # real failure from a signed-out state, and fail loudly.
+                    print(json.dumps({"error": str(e)}))
+                    sys.exit(1)
                 print(f"❌ Error retrieving status: {e}", file=sys.stderr)
         case "sign":
             try:
