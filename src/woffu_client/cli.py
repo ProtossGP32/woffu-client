@@ -6,6 +6,8 @@ CLI tool for woffu-client.
 from __future__ import annotations
 
 import argparse
+import json
+import logging
 import sys
 from pathlib import Path
 
@@ -80,6 +82,12 @@ def main() -> None:
         help="Shows additional info such as theoretical schedule.",
     )
 
+    status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output status as machine-readable JSON (suppresses log output).",
+    )
+
     # ---- sign ----
     sign_parser = subparsers.add_parser(
         "sign",
@@ -150,8 +158,31 @@ def main() -> None:
                 sys.exit(1)
         case "get-status":
             try:
-                client.get_status(extend=args.extend)
+                if args.json:
+                    logging.disable(logging.INFO)
+                    status_data = client.get_status(extend=True)
+                    total_time, running_clock, theoretical_time = status_data
+                    logging.disable(logging.NOTSET)
+                    h, rem = divmod(int(total_time.total_seconds()), 3600)
+                    m, s = divmod(rem, 60)
+                    theo_str = None
+                    if theoretical_time.total_seconds() > 0:
+                        th, tr = divmod(
+                            int(theoretical_time.total_seconds()), 3600,
+                        )
+                        tm, ts = divmod(tr, 60)
+                        theo_str = f"{th:02d}:{tm:02d}:{ts:02d}"
+                    print(
+                        json.dumps({
+                            "signed_in": running_clock,
+                            "hours_worked": f"{h:02d}:{m:02d}:{s:02d}",
+                            "theoretical_hours": theo_str,
+                        }),
+                    )
+                else:
+                    client.get_status(extend=args.extend)
             except Exception as e:
+                logging.disable(logging.NOTSET)
                 print(f"❌ Error retrieving status: {e}", file=sys.stderr)
         case "sign":
             try:
