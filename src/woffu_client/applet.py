@@ -6,6 +6,7 @@ is never blocked; results are marshalled back via GLib.idle_add.
 """
 from __future__ import annotations
 
+import os
 import threading
 
 import gi
@@ -32,9 +33,10 @@ except ValueError:
 
 _POLL_SECONDS = 30
 
-_ICON_ONLINE = "user-available-symbolic"
-_ICON_OFFLINE = "user-offline-symbolic"
-_ICON_ERROR = "user-busy-symbolic"
+# Bundled Woffu brand icon (icons/woffu.svg). One icon is shown for every
+# state; the menu status line conveys signed-in / out / error / not-configured.
+_ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
+_ICON_NAME = "woffu"
 
 _NOT_CONFIGURED_LABEL = "Not configured — run woffu-cli request-credentials"
 
@@ -44,10 +46,11 @@ class WoffuApplet:
 
     def __init__(self) -> None:
         """Build the indicator and menu, then start the status poll timer."""
-        self._indicator = AppIndicator3.Indicator.new(
+        self._indicator = AppIndicator3.Indicator.new_with_path(
             "woffu-applet",
-            _ICON_OFFLINE,
+            _ICON_NAME,
             AppIndicator3.IndicatorCategory.APPLICATION_STATUS,
+            _ICON_DIR,
         )
         self._indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
         self._indicator.set_menu(self._build_menu())
@@ -111,19 +114,19 @@ class WoffuApplet:
         self._sign_out_item.set_sensitive(signable)
 
         if not status.configured:
-            self._indicator.set_icon_full(_ICON_ERROR, "not configured")
+            self._indicator.set_icon_full(_ICON_NAME, "Woffu — not configured")
             self._status_label.set_label(status.error or _NOT_CONFIGURED_LABEL)
         elif status.error:
-            self._indicator.set_icon_full(_ICON_ERROR, "error")
+            self._indicator.set_icon_full(_ICON_NAME, "Woffu — error")
             self._status_label.set_label(f"Error: {status.error}")
         elif status.signed_in:
             label = f"Signed in · {status.hours_worked}"
             if status.theoretical_hours:
                 label += f" / {status.theoretical_hours}"
-            self._indicator.set_icon_full(_ICON_ONLINE, "signed in")
+            self._indicator.set_icon_full(_ICON_NAME, "Woffu — signed in")
             self._status_label.set_label(label)
         else:
-            self._indicator.set_icon_full(_ICON_OFFLINE, "signed out")
+            self._indicator.set_icon_full(_ICON_NAME, "Woffu — signed out")
             self._status_label.set_label(f"Signed out · {status.hours_worked}")
         return False  # don't repeat the idle_add
 
