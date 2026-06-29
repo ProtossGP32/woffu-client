@@ -36,6 +36,8 @@ _ICON_ONLINE = "user-available-symbolic"
 _ICON_OFFLINE = "user-offline-symbolic"
 _ICON_ERROR = "user-busy-symbolic"
 
+_NOT_CONFIGURED_LABEL = "Not configured — run woffu-cli request-credentials"
+
 
 class WoffuApplet:
     """GNOME indicator that renders Woffu state and drives sign actions."""
@@ -66,13 +68,13 @@ class WoffuApplet:
 
         menu.append(Gtk.SeparatorMenuItem())
 
-        sign_in_item = Gtk.MenuItem(label="Sign in")
-        sign_in_item.connect("activate", self._on_sign_in)
-        menu.append(sign_in_item)
+        self._sign_in_item = Gtk.MenuItem(label="Sign in")
+        self._sign_in_item.connect("activate", self._on_sign_in)
+        menu.append(self._sign_in_item)
 
-        sign_out_item = Gtk.MenuItem(label="Sign out")
-        sign_out_item.connect("activate", self._on_sign_out)
-        menu.append(sign_out_item)
+        self._sign_out_item = Gtk.MenuItem(label="Sign out")
+        self._sign_out_item.connect("activate", self._on_sign_out)
+        menu.append(self._sign_out_item)
 
         menu.append(Gtk.SeparatorMenuItem())
 
@@ -103,7 +105,15 @@ class WoffuApplet:
         GLib.idle_add(self._apply_status, status)
 
     def _apply_status(self, status: WoffuStatus) -> bool:
-        if status.error:
+        # Sign actions only make sense once credentials exist.
+        signable = status.configured
+        self._sign_in_item.set_sensitive(signable)
+        self._sign_out_item.set_sensitive(signable)
+
+        if not status.configured:
+            self._indicator.set_icon_full(_ICON_ERROR, "not configured")
+            self._status_label.set_label(status.error or _NOT_CONFIGURED_LABEL)
+        elif status.error:
             self._indicator.set_icon_full(_ICON_ERROR, "error")
             self._status_label.set_label(f"Error: {status.error}")
         elif status.signed_in:

@@ -50,8 +50,9 @@ class GetStatusTest(unittest.TestCase):
         self.assertTrue(kwargs["capture_output"])
         self.assertTrue(kwargs["text"])
 
+    @patch("src.woffu_client.core._is_configured", return_value=True)
     @patch("src.woffu_client.core.subprocess.run")
-    def test_nonzero_exit_is_error(self, mock_run):
+    def test_nonzero_exit_is_error(self, mock_run, _mock_configured):
         """A non-zero return code surfaces stderr as an error status."""
         mock_run.return_value = _completed(
             stderr="❌ Error retrieving status: boom", returncode=1,
@@ -60,6 +61,43 @@ class GetStatusTest(unittest.TestCase):
         self.assertIsNotNone(status.error)
         self.assertIn("boom", status.error)
         self.assertFalse(status.signed_in)
+        self.assertTrue(status.configured)
+
+    @patch("src.woffu_client.core._is_configured", return_value=True)
+    @patch("src.woffu_client.core.subprocess.run")
+    def test_structured_json_error_surfaced(self, mock_run, _mock_configured):
+        """An {"error": ...} payload (exit 1) is surfaced, not signed-out."""
+        mock_run.return_value = _completed(
+            stdout='{"error": "token expired"}', returncode=1,
+        )
+        status = core.get_status()
+        self.assertEqual(status.error, "token expired")
+        self.assertFalse(status.signed_in)
+        self.assertTrue(status.configured)
+
+    @patch("src.woffu_client.core._is_configured", return_value=True)
+    @patch("src.woffu_client.core.subprocess.run")
+    def test_failure_never_reads_as_signed_out(self, mock_run, _mock_cfg):
+        """A failed check always carries an error (regression: stale token)."""
+        mock_run.return_value = _completed(
+            stdout="", stderr="401 Unauthorized", returncode=1,
+        )
+        status = core.get_status()
+        # The bug was returning signed_in=False with error=None, which the
+        # applet rendered as a real "Signed out" state.
+        self.assertIsNotNone(status.error)
+
+    @patch("src.woffu_client.core._is_configured", return_value=False)
+    @patch("src.woffu_client.core.subprocess.run")
+    def test_not_configured_is_actionable(self, mock_run, _mock_configured):
+        """Missing credentials yield configured=False + an actionable hint."""
+        mock_run.return_value = _completed(
+            stderr="username and password required", returncode=1,
+        )
+        status = core.get_status()
+        self.assertFalse(status.configured)
+        self.assertFalse(status.signed_in)
+        self.assertIn("request-credentials", status.error)
 
     @patch("src.woffu_client.core.subprocess.run")
     def test_cli_not_found(self, mock_run):
