@@ -39,7 +39,10 @@ When adding a feature, put logic in `core`/`status` and keep `applet` thin.
 ## Commands
 
 ```bash
-# Run the applet (installed entry point, or module form)
+# Run the applet (installed entry point, or module form).
+# Needs a Python that has PyGObject: a plain pip venv without system gi fails
+# to import 'gi'. Use the distro python3-gi (e.g. a venv created with
+# --system-site-packages, or the system python).
 woffu-applet
 python3 -m woffu_client.applet
 
@@ -75,8 +78,11 @@ ruff check . && ruff format .
   `GLib.idle_add` — never touch GTK widgets from a thread.
 - Status is re-checked on a `GLib.timeout_add_seconds` timer and after every
   sign action, so the icon reflects reality.
-- Icon names come from the Adwaita symbolic set (e.g. `user-available-symbolic`,
-  `user-offline-symbolic`). Don't bundle custom icons unless necessary.
+- The applet ships a bundled Woffu brand icon at `src/woffu_client/icons/woffu.svg`,
+  loaded with `Indicator.new_with_path`. The same icon is used for every state;
+  the menu's status line conveys signed-in / out / error / not-configured. Swap
+  that file to change the icon (keep it square and simple so it reads at panel
+  size); declare new icon files under `[tool.setuptools.package-data]`.
 - Keep `core`/`status` free of any `gi`/GTK imports.
 
 ## CLI contracts (verified against the installed version)
@@ -97,6 +103,10 @@ Other notes:
   "not configured" state pointing the user to `woffu-cli request-credentials`,
   rather than crashing.
 - The applet only appears in GNOME if the AppIndicator extension is active.
+- Runtime-verified on GNOME: the indicator renders, and Sign in / Sign out drive
+  real Woffu state. Refresh re-queries status too, but because one icon serves
+  all states it produces no icon change — its result shows in the menu's status
+  line the next time the menu is opened (clicking a menu item closes the menu).
 
 ## Security
 
