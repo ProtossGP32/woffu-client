@@ -125,17 +125,27 @@ jobs:
           apt-get update && apt-get install -y curl unzip git
       - uses: actions/checkout@v4
         with:
+          # Disabling shallow clone is recommended for improving relevancy of reporting.
           fetch-depth: 0
       - name: Download coverage artifacts
         uses: actions/download-artifact@v4
         with:
           name: coverage
           path: coverage
+      # Triggering SonarQube analysis as results of it are required by Quality Gate check.
       - uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-
+      # Check the Quality Gate status.
+      - name: SonarQube Quality Gate check
+        id: sonarqube-quality-gate-check
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        with:
+          pollingTimeoutSec: 600
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} #OPTIONAL
   set-version:
     name: Set version from tag
     #runs-on: ubuntu-latest
