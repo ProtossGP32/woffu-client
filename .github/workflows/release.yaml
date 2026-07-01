@@ -42,7 +42,7 @@ jobs:
   #   steps:
   #   - uses: actions/checkout@v7
   #   - name: Setup Python
-  #     uses: actions/setup-python@v6
+  #     uses: actions/setup-python@v6.3.0
   #     with:
   #       python-version: 3.11
   #   - uses: pre-commit/action@v3.0.1
@@ -71,7 +71,7 @@ jobs:
       # Checkout repo so that test code and pyproject.toml are available
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v6.3.0
         with:
           python-version: ${{ matrix.python }}
 
@@ -79,7 +79,7 @@ jobs:
         run: mkdir -p ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
 
       - name: Cache pip
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
           key: ${{ runner.os }}-pip-${{ matrix.python }}-${{ hashFiles('**/pyproject.toml') }}
@@ -103,7 +103,7 @@ jobs:
 
       - name: Upload coverage reports - Only for Python 3.11
         if: ${{ matrix.python == '3.11' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           # Use unique artifact names per OS/Python version to avoid conflicts
           name: 'coverage'
@@ -128,12 +128,12 @@ jobs:
           # Disabling shallow clone is recommended for improving relevancy of reporting.
           fetch-depth: 0
       - name: Download coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           name: coverage
           path: coverage
       # Triggering SonarQube analysis as results of it are required by Quality Gate check.
-      - uses: SonarSource/sonarqube-scan-action@v6
+      - uses: SonarSource/sonarqube-scan-action@v8.2.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -161,7 +161,7 @@ jobs:
     outputs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Extract version from tag
         id: get_version
@@ -188,11 +188,11 @@ jobs:
         os: [ubuntu-latest]
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         # Checkout repo here is required so pyproject.toml and source code exist.
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v6.3.0
         with:
           python-version: ${{ matrix.python }}
 
@@ -200,7 +200,7 @@ jobs:
         run: mkdir -p ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
 
       - name: Cache pip
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
           key: build-pip-${{ runner.os }}-${{ matrix.python }}-${{ hashFiles('**/pyproject.toml') }}
@@ -208,7 +208,7 @@ jobs:
             build-pip-${{ runner.os }}-${{ matrix.python }}-
 
       - name: Cache built artifacts
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: dist
           key: build-dist-${{ runner.os }}-${{ github.ref_name }}
@@ -248,7 +248,7 @@ jobs:
         # Uses the updated pyproject.toml version
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           # Use unique artifact names per OS/Python version to avoid conflicts
           name: dist-${{ matrix.os }}-py${{ matrix.python }}
@@ -270,10 +270,10 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO_OWNER: ${{ github.repository_owner }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v6.3.0
         with:
           python-version: "3.11"
 
@@ -281,7 +281,7 @@ jobs:
         run: mkdir -p ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
 
       - name: Cache pip
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ${{ runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip' }}
           key: publish-pip-${{ runner.os }}-${{ hashFiles('**/pyproject.toml') }}
@@ -295,7 +295,7 @@ jobs:
         run: rm -rf merged_dist
 
       - name: Download built artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           path: artifacts
 
@@ -339,7 +339,7 @@ jobs:
             --non-interactive
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3.0.1
         with:
           generate_release_notes: true
           files: release_artifacts/*
