@@ -122,7 +122,7 @@ jobs:
       # Required step for self-hosted instances running job on container
       - name: Install OS dependencies
         run: |
-          apt-get update && apt-get install -y curl unzip git jq
+          apt-get update && apt-get install -y curl unzip git jq gpg dirmngr
       - uses: actions/checkout@v7
         with:
           # Disabling shallow clone is recommended for improving relevancy of reporting.
