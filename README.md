@@ -21,7 +21,7 @@ pip install woffu-client
 #### Development
 
 ```bash
-pip install -e .
+pip install -e .[dev]
 ```
 
 ## Usage
@@ -57,7 +57,7 @@ woffu-cli <action-name> -h
 
 ### GitFlow convention
 
-Please follow the [GitFlow convention][atlassian-gitflow] to do contributions to the code.
+Please follow the [GitFlow convention][atlassian-gitflow] to do contributions to the code. CI pipelines expect feature branches to be named as `feat/**`, else they won't trigger any job.
 
 ### Linting
 
@@ -78,11 +78,44 @@ cd /path/to/woffu-client
 pre-commit install
 ```
 
-With this, each commit you do will be checked and auto-fixed by the `pre-commit` git hook. You'll have to stage the new changes in the files if something has been fixed.
+With this, each commit you do will be checked and auto-fixed by the `pre-commit` git hook. You'll have to stage the new changes in the files if something has been fixed. If you want to manually execute `pre-commit`, manually stage your changes and run:
+
+```bash
+pre-commit run
+```
 
 ### Testing
 
-> :warning: TODO: add instructions on how to test code and where to add new tests
+Tests use `pytest` and are located in the `tests` folder. We enforce both tests and code coverage in this project, so make sure to test it before opening a PR.
+
+Run tests and coverage with this command:
+
+```bash
+pytest -v --maxfail=1 --disable-warnings --junitxml coverage/report.xml --cov-report term --cov-report xml:coverage/coverage.xml --cov=. tests
+```
+
+If you prefer using `coverage` directly:
+
+```bash
+coverage run -m pytest -v tests && coverage report -m
+```
+
+For a nice HTML report, run:
+
+```bash
+coverage html -d .coverage && firefox .coverage/index.html
+```
+
+Remember to not push the coverage reports to the repository! `.gitignore` already filters some default paths, but double check it before commiting.
+
+#### Code coverage
+
+A SonarQube instance is in charge of analyzing the new code during CI/CD pipelines. Only contributions that meet the following clean code conditions will be accepted:
+
+- The new code doesn't introduce issues (bugs, vulnerabilites or code smell)
+- All new security hotspots are reviewed
+- New code has sufficient test coverage (greater or equal to **80.0%**)
+- New code has limited duplications (duplicated lines is less than or equal to **3.0%**)
 
 ## Disclaimer
 
