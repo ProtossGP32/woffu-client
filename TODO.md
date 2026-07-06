@@ -40,7 +40,28 @@ CLAUDE.md.
 ## Packaging / delivery (already planned)
 
 - [ ] Ship a `.desktop` autostart file so the applet launches on login.
-- [ ] README install section: system deps (`python3-gi` + AppIndicator GIR),
+- [x] README install section: system deps (`python3-gi` + AppIndicator GIR),
       `pip install .[gui]`, the `--system-site-packages` venv note, and enabling
       the GNOME AppIndicator extension.
-- [ ] Open the PR once the above settle.
+
+### Self-hosted, no-Python-env installable (separate initiative)
+
+Discussed with reviewer on PR #54: package this as something a user can
+install directly, without dealing with a Python env or pip/venv commands, on
+both Linux and Windows. Linux and Windows are two different problems here, not
+one packaging task — treat as separate follow-up PR(s) from the applet work,
+not part of this PR:
+
+- [ ] **Linux.** GTK3 + AppIndicator depend on system-level GObject
+      introspection typelibs resolved at runtime against whatever's installed
+      on the host, so they can't be meaningfully bundled the PyInstaller/
+      single-binary way. Package as a native `.deb`/`.rpm` (e.g. via `fpm`) or
+      a Flatpak against the GNOME runtime, declaring those as real
+      dependencies so the package manager installs them — not the user
+      running shell commands.
+- [ ] **Windows.** There is no GTK/AppIndicator target on Windows, so this
+      isn't a packaging change — it's a new tray front-end (e.g. `pystray` +
+      a native dialog toolkit) replacing `applet.py`. `core.py`/`status.py`
+      are already GTK-free by design and should be reusable as-is. Bundle the
+      new front-end with PyInstaller + an installer wrapper (Inno Setup/NSIS)
+      once it exists — Windows has none of Linux's GI-bundling problem.
