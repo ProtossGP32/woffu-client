@@ -1,8 +1,10 @@
 """Tests for Woffu CLI."""
 from __future__ import annotations
 
+import json
 import sys
 import unittest
+from datetime import timedelta
 from io import StringIO
 from pathlib import Path
 from typing import cast
@@ -88,6 +90,47 @@ class WoffuCLITest(unittest.TestCase):
 
         error_output = cast(StringIO, sys.stderr).getvalue()
         self.assertIn("❌ Error retrieving status", error_output)
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_get_status_json_success(self, mock_client_cls):
+        """`get-status --json` prints a JSON payload.
+
+        Built from the client's (total_time, signed_in, theoretical_time)
+        tuple, independently of anything in core.py.
+        """
+        mock_client = mock_client_cls.return_value
+        mock_client.get_status.return_value = (
+            timedelta(hours=6, minutes=49, seconds=39),
+            True,
+            timedelta(hours=6, minutes=30),
+        )
+
+        with patch.object(sys, "argv", ["cli", "get-status", "--json"]):
+            cli.main()
+
+        mock_client.get_status.assert_called_once_with(extend=True)
+        output = json.loads(cast(StringIO, sys.stdout).getvalue())
+        self.assertEqual(
+            output, {
+                "signed_in": True,
+                "hours_worked": "06:49:39",
+                "theoretical_hours": "06:30:00",
+            },
+        )
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_get_status_json_failure(self, mock_client_cls):
+        """`get-status --json` emits a structured error and exits non-zero."""
+        mock_client = mock_client_cls.return_value
+        mock_client.get_status.side_effect = Exception("token expired")
+
+        with patch.object(sys, "argv", ["cli", "get-status", "--json"]):
+            with self.assertRaises(SystemExit) as cm:
+                cli.main()
+            self.assertEqual(cm.exception.code, 1)
+
+        output = json.loads(cast(StringIO, sys.stdout).getvalue())
+        self.assertEqual(output, {"error": "token expired"})
 
     @patch("src.woffu_client.cli.WoffuAPIClient")
     def test_sign_success(self, mock_client_cls):

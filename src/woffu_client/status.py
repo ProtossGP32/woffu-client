@@ -1,17 +1,18 @@
-"""Woffu status model and parsers.
+"""Woffu status model and formatting.
 
 Pure functions and data types — no I/O, no GTK.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 
 @dataclass
 class WoffuStatus:
     """Current Woffu sign state, as rendered by the applet.
 
-    `configured` is False when the CLI has no usable credentials yet, so the
+    `configured` is False when there are no usable credentials yet, so the
     applet can show an actionable "run request-credentials" hint instead of a
     misleading signed-out state.
     """
@@ -23,29 +24,28 @@ class WoffuStatus:
     configured: bool = True
 
 
-def parse_json(data: dict) -> WoffuStatus:
-    """Build a WoffuStatus from a `woffu-cli get-status --json` payload."""
-    return WoffuStatus(
-        signed_in=data.get("signed_in", False),
-        hours_worked=data.get("hours_worked", "00:00:00"),
-        theoretical_hours=data.get("theoretical_hours"),
-        error=data.get("error"),
-        configured=data.get("configured", True),
-    )
+def format_timedelta(delta: timedelta) -> str:
+    """Format a timedelta as HH:MM:SS."""
+    hours, rem = divmod(int(delta.total_seconds()), 3600)
+    minutes, seconds = divmod(rem, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 
-def parse_text(text: str) -> WoffuStatus:
-    """Fallback: keyword-match the plain-text output of `woffu-cli get-status`.
+def from_client_result(
+    total_time: timedelta, signed_in: bool, theoretical_time: timedelta,
+) -> WoffuStatus:
+    """Build a WoffuStatus from a `WoffuAPIClient.get_status()` result.
 
-    Used when the --json flag is unavailable (older CLI versions).
-    Lines look like:
-        [...] INFO woffu_api_client: Hours worked today: HH:MM:SS
-        [...] INFO woffu_api_client: You're currently signed in.
+    Shared by core.py (applet) and cli.py (`get-status --json`) so the
+    HH:MM:SS formatting lives in one place.
     """
-    signed_in = "signed in" in text
-    hours_worked = "00:00:00"
-    for line in text.splitlines():
-        if "Hours worked today:" in line:
-            hours_worked = line.split("Hours worked today:")[-1].strip()
-            break
-    return WoffuStatus(signed_in=signed_in, hours_worked=hours_worked)
+    theoretical_hours = (
+        format_timedelta(theoretical_time)
+        if theoretical_time.total_seconds() > 0
+        else None
+    )
+    return WoffuStatus(
+        signed_in=signed_in,
+        hours_worked=format_timedelta(total_time),
+        theoretical_hours=theoretical_hours,
+    )

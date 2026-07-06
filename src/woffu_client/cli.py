@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from woffu_client import WoffuAPIClient  # adjust import path
+from woffu_client.status import from_client_result
 
 DEFAULT_CONFIG = Path.home() / ".config/woffu/woffu_auth.json"
 DEFAULT_OUTPUT_DIR = Path.home() / "Documents/woffu/docs"
@@ -160,23 +161,18 @@ def main() -> None:
             try:
                 if args.json:
                     logging.disable(logging.INFO)
-                    status_data = client.get_status(extend=True)
-                    total_time, running_clock, theoretical_time = status_data
+                    total_time, running_clock, theoretical_time = (
+                        client.get_status(extend=True)
+                    )
                     logging.disable(logging.NOTSET)
-                    h, rem = divmod(int(total_time.total_seconds()), 3600)
-                    m, s = divmod(rem, 60)
-                    theo_str = None
-                    if theoretical_time.total_seconds() > 0:
-                        th, tr = divmod(
-                            int(theoretical_time.total_seconds()), 3600,
-                        )
-                        tm, ts = divmod(tr, 60)
-                        theo_str = f"{th:02d}:{tm:02d}:{ts:02d}"
+                    status = from_client_result(
+                        total_time, running_clock, theoretical_time,
+                    )
                     print(
                         json.dumps({
-                            "signed_in": running_clock,
-                            "hours_worked": f"{h:02d}:{m:02d}:{s:02d}",
-                            "theoretical_hours": theo_str,
+                            "signed_in": status.signed_in,
+                            "hours_worked": status.hours_worked,
+                            "theoretical_hours": status.theoretical_hours,
                         }),
                     )
                 else:
