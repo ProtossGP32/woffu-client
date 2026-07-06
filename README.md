@@ -24,6 +24,52 @@ pip install woffu-client
 pip install -e .[dev]
 ```
 
+#### Desktop applet (GNOME)
+
+The package also ships `woffu-applet`, a GNOME top-bar applet that lets you
+sign in / out of Woffu in a couple of clicks, backed by the same
+`WoffuAPIClient` as `woffu-cli`.
+
+It needs GTK 3 and an AppIndicator binding, which come from your distro's
+packages rather than pip:
+
+```bash
+# Debian/Ubuntu
+sudo apt install python3-gi gir1.2-ayatanaappindicator3-0.1
+# Fedora
+sudo dnf install python3-gobject libayatana-appindicator-gtk3
+```
+
+Then install the `gui` extra:
+
+```bash
+pip install woffu-client[gui]
+```
+
+`PyGObject` (the `gi` module) binds to the system GTK install, so a plain
+`venv` won't see it. Either install into a venv created with
+`--system-site-packages`, or install `woffu-client[gui]` for the system
+Python directly:
+
+```bash
+python3 -m venv --system-site-packages .venv
+source .venv/bin/activate
+pip install woffu-client[gui]
+```
+
+On GNOME, the applet only shows up in the top bar once the AppIndicator
+extension is enabled (install `gnome-shell-extension-appindicator` on
+Fedora; it's usually preinstalled on Ubuntu).
+
+Run it after the one-time `woffu-cli request-credentials` setup (see
+[Usage](#usage) below):
+
+```bash
+woffu-applet
+# or, without the entry point:
+python3 -m woffu_client.applet
+```
+
 ## Usage
 
 ```bash
