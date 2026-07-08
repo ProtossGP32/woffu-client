@@ -50,7 +50,7 @@ jobs:
 
   test:
     # needs: pre-commit
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
     name: Test ${{ matrix.os }} / Python ${{ matrix.python }}
     #runs-on: [ self-hosted, "${{ matrix.os }}" ]
     runs-on: self-hosted
@@ -110,6 +110,26 @@ jobs:
           path: 'coverage/*.xml'
           if-no-files-found: warn
           overwrite: true
+
+  # Use GitHub Code coverage bot
+  upload-coverage:
+    needs: test
+    if: ${{ !cancelled() && needs.test.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      code-quality: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage
+          path: coverage
+
+      - uses: actions/upload-code-coverage@v1
+        with:
+          file: coverage.xml
+          language: Python
+          label: code-coverage/pytest
 
   sonarqube:
     name: Sonarqube coverage
