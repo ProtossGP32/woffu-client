@@ -129,10 +129,11 @@ jobs:
       - name: DEBUG - coverage file location
         id: debug_coverage_location
         run: |
+          pwd
           find . -type f -name "*.xml" -exec readlink -f {} \;
 
       - name: Upload coverage for GitHub
-        uses: actions/upload-code-coverage@v1
+        uses: actions/upload-code-coverage@v1.3.0
         with:
           file: coverage.xml
           language: Python
