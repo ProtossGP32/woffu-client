@@ -15,7 +15,7 @@ on:
   push:
     branches:
       - main
-      - 'feat/**'
+      - 'feature/**'
       - 'fix/**'
     # Trigger workflow on tag push explicitly
     tags:
@@ -31,7 +31,6 @@ on:
       - 'LICENSE'
       - '.gitignore'
   workflow_dispatch:
-
 
 jobs:
   # pre-commit:
@@ -130,7 +129,7 @@ jobs:
       - name: DEBUG - coverage file location
         id: debug_coverage_location
         run: |
-          find . -type f -name "*.xml" -exec realink -f {} \;
+          find . -type f -name "*.xml" -exec readlink -f {} \;
 
       - name: Upload coverage for GitHub
         uses: actions/upload-code-coverage@v1
