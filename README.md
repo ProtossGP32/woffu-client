@@ -57,7 +57,7 @@ woffu-cli <action-name> -h
 
 ### GitFlow convention
 
-Please follow the [GitFlow convention][atlassian-gitflow] to do contributions to the code. CI pipelines expect feature branches to be named as `feat/**`, else they won't trigger any job.
+Please follow the [GitFlow convention][atlassian-gitflow] to do contributions to the code. CI pipelines expect feature branches to be named as `feature/**`, else they won't trigger any job.
 
 ### Linting
 
