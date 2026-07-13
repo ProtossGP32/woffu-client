@@ -38,7 +38,7 @@ repos:
 
   # Reorder Python imports
   - repo: https://github.com/asottile/reorder-python-imports
-    rev: v3.16.0
+    rev: v3.17.0
     hooks:
       - id: reorder-python-imports
         args: [
