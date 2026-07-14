@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import threading
+from collections.abc import Callable
 
 import gi
 
@@ -148,7 +149,7 @@ class WoffuApplet:
             daemon=True,
         ).start()
 
-    def _do_sign_then_refresh(self, action: object) -> None:
+    def _do_sign_then_refresh(self, action: Callable[[], None]) -> None:
         action()
         status = core.get_status()
         GLib.idle_add(self._apply_status, status)
