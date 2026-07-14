@@ -6,6 +6,12 @@ a display), and its widget attributes are Mock()s instead. This covers the
 status->label/icon mapping and the thread/GLib dispatch wiring that applet.py
 owns. _build_menu()/__init__() themselves still need a real GTK display and
 are out of scope here.
+
+applet.py imports gi (PyGObject) at module level, which needs the system
+GTK/AppIndicator introspection typelibs (see CLAUDE.md) rather than just a
+pip install. Skip instead of erroring when that's not available, so a plain
+venv without system gi (e.g. a default VS Code venv) doesn't show this whole
+module as a collection error.
 """
 from __future__ import annotations
 
@@ -13,8 +19,12 @@ import unittest
 from unittest.mock import Mock
 from unittest.mock import patch
 
-import src.woffu_client.applet as applet
-from src.woffu_client.status import WoffuStatus
+import pytest
+
+pytest.importorskip("gi", reason="PyGObject (system gi) is not installed")
+
+import src.woffu_client.applet as applet  # noqa: E402
+from src.woffu_client.status import WoffuStatus  # noqa: E402
 
 
 def _make_applet() -> applet.WoffuApplet:
