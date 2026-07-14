@@ -99,6 +99,21 @@ source .venv/bin/activate
 pip install -e .[dev,gui]
 ```
 
+If you use [`uv`][uv-page] instead of stdlib `venv`, pin the interpreter
+explicitly:
+
+```bash
+uv venv --python /usr/bin/python3 --system-site-packages .venv
+uv pip install -e .[dev,gui]
+```
+
+Plain `uv venv --system-site-packages` (no `--python`) lets `uv` pick its own
+managed CPython build instead of your distro's `/usr/bin/python3`, and
+`--system-site-packages` then can't see `/usr/lib/python3/dist-packages`
+(where `python3-gi` lives) since it resolves relative to that managed build,
+not the system one — `import gi` fails with `ModuleNotFoundError` even though
+the package above is installed.
+
 On GNOME, the applet only shows up in the top bar once the AppIndicator
 extension is enabled (install `gnome-shell-extension-appindicator` on
 Fedora; it's usually preinstalled on Ubuntu).
@@ -213,3 +228,4 @@ This project has been partially coded using AI (ChatGPT) for handling HTTP sessi
 [atlassian-gitflow]: https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow
 [python-pep8-page]: https://peps.python.org/pep-0008/
 [pre-commit-page]: https://pre-commit.com/
+[uv-page]: https://docs.astral.sh/uv/

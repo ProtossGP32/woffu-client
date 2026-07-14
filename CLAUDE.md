@@ -81,6 +81,13 @@ pre-commit run --all-files
   `AppIndicator3`. Always keep that fallback — distros ship one or the other.
 - System packages (not pip): `python3-gi` and the GIR for AppIndicator. On Fedora,
   GNOME also needs the `gnome-shell-extension-appindicator` extension enabled.
+- If the dev `.venv` was created with `uv venv --system-site-packages` (no
+  `--python` flag), `uv` may pick its own managed CPython build instead of the
+  system interpreter, so `--system-site-packages` won't see
+  `/usr/lib/python3/dist-packages` (where `python3-gi` lives) and `import gi`
+  fails with `ModuleNotFoundError` even though the system package is
+  installed. Pin the system interpreter: `uv venv --python /usr/bin/python3
+  --system-site-packages`. See README.md's Development install section.
 
 ## Conventions
 
