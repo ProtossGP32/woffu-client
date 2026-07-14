@@ -30,31 +30,73 @@ The package also ships `woffu-applet`, a GNOME top-bar applet that lets you
 sign in / out of Woffu in a couple of clicks, backed by the same
 `WoffuAPIClient` as `woffu-cli`.
 
-It needs GTK 3 and an AppIndicator binding, which come from your distro's
-packages rather than pip:
+It needs GTK 3 and an AppIndicator binding (`gi` / PyGObject), which bind to
+your distro's system libraries rather than being pure pip packages. `gi`
+binds to the system GTK install, so a plain `venv` won't see it — either
+route below needs a venv created with `--system-site-packages`, or the
+system Python directly.
+
+There are two different package lists depending on what you're doing:
+
+##### Production — just running the applet
+
+Install the **prebuilt** runtime packages from your distro. No compiler is
+needed:
+
+| Package | Debian/Ubuntu | Fedora |
+| --- | --- | --- |
+| PyGObject (`gi`) bindings | `python3-gi` | `python3-gobject` |
+| GTK 3 typelib | `gir1.2-gtk-3.0` | (bundled with `python3-gobject`) |
+| AppIndicator typelib | `gir1.2-ayatanaappindicator3-0.1` (legacy: `gir1.2-appindicator3-0.1`) | `libayatana-appindicator-gtk3` |
 
 ```bash
 # Debian/Ubuntu
-sudo apt install python3-gi gir1.2-ayatanaappindicator3-0.1
+sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1
 # Fedora
 sudo dnf install python3-gobject libayatana-appindicator-gtk3
 ```
 
-Then install the `gui` extra:
-
-```bash
-pip install woffu-client[gui]
-```
-
-`PyGObject` (the `gi` module) binds to the system GTK install, so a plain
-`venv` won't see it. Either install into a venv created with
-`--system-site-packages`, or install `woffu-client[gui]` for the system
-Python directly:
+Then install `woffu-client` itself — **not** the `[gui]` extra, since the
+system package above already provides `gi`:
 
 ```bash
 python3 -m venv --system-site-packages .venv
 source .venv/bin/activate
-pip install woffu-client[gui]
+pip install woffu-client
+```
+
+##### Development — building `PyGObject` from source (the `gui` extra)
+
+If you're contributing to this repo, `pip install .[gui]` builds
+`PyGObject` (and its `pycairo` build dependency) from source instead of
+using a system package. That needs the full compiler toolchain and
+`-dev`/`-devel` headers, on top of the runtime packages listed above:
+
+| Package | Debian/Ubuntu | Fedora |
+| --- | --- | --- |
+| Python headers | `python3-dev` | `python3-devel` |
+| Compiler toolchain | `build-essential` | `gcc` `gcc-c++` `make` |
+| pkg-config | `pkg-config` | `pkgconf-pkg-config` |
+| Cairo headers (for `pycairo`) | `libcairo2-dev` | `cairo-gobject-devel` |
+| GObject-Introspection headers (for `PyGObject`) | `libgirepository-2.0-dev` (older releases: `libgirepository1.0-dev`) | `gobject-introspection-devel` |
+
+```bash
+# Debian/Ubuntu
+sudo apt install python3-dev build-essential pkg-config libcairo2-dev \
+  python3-gi gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1
+sudo apt install libgirepository-2.0-dev || sudo apt install libgirepository1.0-dev
+# Fedora
+sudo dnf install python3-devel gcc gcc-c++ make pkgconf-pkg-config \
+  cairo-gobject-devel gobject-introspection-devel \
+  python3-gobject libayatana-appindicator-gtk3
+```
+
+Then, from a clone of this repo:
+
+```bash
+python3 -m venv --system-site-packages .venv
+source .venv/bin/activate
+pip install -e .[dev,gui]
 ```
 
 On GNOME, the applet only shows up in the top bar once the AppIndicator
