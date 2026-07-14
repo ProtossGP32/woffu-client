@@ -15,8 +15,8 @@ on:
   push:
     branches:
       - main
-      - 'feature/**'
-      - 'fix/**'
+      #- 'feature/**'
+      #- 'fix/**'
     # Trigger workflow on tag push explicitly
     tags:
       - 'v*.*.*'  # trigger only on tags for releases
