@@ -1,11 +1,13 @@
 """Tests for the Woffu GTK applet's presentation logic.
 
-No real GTK widgets or display are used: WoffuApplet is built via __new__()
-to skip __init__() (which constructs real AppIndicator/Gtk objects and needs
-a display), and its widget attributes are Mock()s instead. This covers the
-status->label/icon mapping and the thread/GLib dispatch wiring that applet.py
-owns. _build_menu()/__init__() themselves still need a real GTK display and
-are out of scope here.
+No real GTK widgets or display are used anywhere in this file. Most tests
+build a WoffuApplet via __new__() to skip __init__() and use Mock() widget
+attributes directly, covering the status->label/icon mapping and thread/GLib
+dispatch wiring. InitAndBuildMenuTest/MainTest instead patch Gtk/AppIndicator3/
+GLib at the module level and construct a real WoffuApplet()/call main(), so
+__init__()/_build_menu()'s own control flow (which widget gets built, which
+handler gets connected to which signal) is exercised without ever touching
+a real display.
 
 applet.py imports gi (PyGObject) at module level, which needs the system
 GTK/AppIndicator introspection typelibs (see CLAUDE.md) rather than just a
@@ -244,6 +246,93 @@ class SignHandlersTest(unittest.TestCase):
         mock_glib.idle_add.assert_called_once_with(
             woffu_applet._apply_status, status,
         )
+
+
+class InitAndBuildMenuTest(unittest.TestCase):
+    """Unit tests for WoffuApplet.__init__() / _build_menu() wiring."""
+
+    @patch("src.woffu_client.applet.threading.Thread")
+    @patch("src.woffu_client.applet.GLib")
+    @patch("src.woffu_client.applet.AppIndicator3")
+    @patch("src.woffu_client.applet.Gtk")
+    def test_init_builds_indicator_and_starts_polling(
+        self, mock_gtk, mock_indicator3, mock_glib, mock_thread_cls,
+    ):
+        """__init__ wires the indicator, menu and poll timer together."""
+        woffu_applet = applet.WoffuApplet()
+
+        mock_indicator3.Indicator.new_with_path.assert_called_once_with(
+            "woffu-applet", applet._ICON_NAME,
+            mock_indicator3.IndicatorCategory.APPLICATION_STATUS,
+            applet._ICON_DIR,
+        )
+        indicator = mock_indicator3.Indicator.new_with_path.return_value
+        self.assertIs(woffu_applet._indicator, indicator)
+        indicator.set_status.assert_called_once_with(
+            mock_indicator3.IndicatorStatus.ACTIVE,
+        )
+        indicator.set_menu.assert_called_once_with(mock_gtk.Menu.return_value)
+        mock_thread_cls.assert_called_once_with(
+            target=woffu_applet._fetch_and_update, daemon=True,
+        )
+        mock_glib.timeout_add_seconds.assert_called_once_with(
+            applet._POLL_SECONDS, woffu_applet._on_timer,
+        )
+
+    @patch("src.woffu_client.applet.threading.Thread")
+    @patch("src.woffu_client.applet.GLib")
+    @patch("src.woffu_client.applet.AppIndicator3")
+    @patch("src.woffu_client.applet.Gtk")
+    def test_build_menu_wires_status_and_sign_items(
+        self, mock_gtk, mock_indicator3, mock_glib, mock_thread_cls,
+    ):
+        """Each menu item is built, labelled and wired to its handler."""
+        status_item, sign_in_item, sign_out_item, refresh_item, quit_item = (
+            Mock(name="status"), Mock(name="sign_in"), Mock(name="sign_out"),
+            Mock(name="refresh"), Mock(name="quit"),
+        )
+        mock_gtk.MenuItem.side_effect = [
+            status_item, sign_in_item, sign_out_item, refresh_item, quit_item,
+        ]
+
+        woffu_applet = applet.WoffuApplet()
+
+        self.assertIs(woffu_applet._status_label, status_item)
+        status_item.set_sensitive.assert_called_once_with(False)
+
+        self.assertIs(woffu_applet._sign_in_item, sign_in_item)
+        sign_in_item.connect.assert_called_once_with(
+            "activate", woffu_applet._on_sign_in,
+        )
+
+        self.assertIs(woffu_applet._sign_out_item, sign_out_item)
+        sign_out_item.connect.assert_called_once_with(
+            "activate", woffu_applet._on_sign_out,
+        )
+
+        refresh_item.connect.assert_called_once()
+        self.assertEqual(refresh_item.connect.call_args[0][0], "activate")
+        quit_item.connect.assert_called_once()
+        self.assertEqual(quit_item.connect.call_args[0][0], "activate")
+
+        menu = mock_gtk.Menu.return_value
+        self.assertEqual(menu.append.call_count, 7)  # 5 items + 2 separators
+        menu.show_all.assert_called_once_with()
+
+
+class MainTest(unittest.TestCase):
+    """Unit tests for the module-level main() entry point."""
+
+    @patch("src.woffu_client.applet.Gtk")
+    @patch("src.woffu_client.applet.WoffuApplet")
+    def test_main_builds_applet_and_runs_the_gtk_main_loop(
+        self, mock_applet_cls, mock_gtk,
+    ):
+        """main() constructs the applet once and enters Gtk.main()."""
+        applet.main()
+
+        mock_applet_cls.assert_called_once_with()
+        mock_gtk.main.assert_called_once_with()
 
 
 if __name__ == "__main__":
