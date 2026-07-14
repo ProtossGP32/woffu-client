@@ -56,6 +56,14 @@ jobs:
     # Container is required for self-hosted runners
     container:
       image: ubuntu:latest
+    env:
+      # actions/setup-python's prebuilt tarballs hardcode their sysconfig
+      # install prefix as /opt/hostedtoolcache/... (the GitHub-hosted-runner
+      # convention). This self-hosted runner defaults RUNNER_TOOL_CACHE to
+      # <work>/_tool instead, so the interpreter runs fine but sysconfig
+      # still points C-extension builds (pycairo) at headers that were never
+      # extracted there. Force the path setup-python's tarballs expect.
+      RUNNER_TOOL_CACHE: /opt/hostedtoolcache
     strategy:
       matrix:
         # macOS and Windows disabled to save free GitHub Actions minutes.
