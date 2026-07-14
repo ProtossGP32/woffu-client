@@ -56,14 +56,6 @@ jobs:
     # Container is required for self-hosted runners
     container:
       image: ubuntu:latest
-    env:
-      # actions/setup-python's prebuilt tarballs hardcode their sysconfig
-      # install prefix as /opt/hostedtoolcache/... (the GitHub-hosted-runner
-      # convention). This self-hosted runner defaults RUNNER_TOOL_CACHE to
-      # <work>/_tool instead, so the interpreter runs fine but sysconfig
-      # still points C-extension builds (pycairo) at headers that were never
-      # extracted there. Force the path setup-python's tarballs expect.
-      RUNNER_TOOL_CACHE: /opt/hostedtoolcache
     strategy:
       matrix:
         # macOS and Windows disabled to save free GitHub Actions minutes.
@@ -102,6 +94,16 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # actions/setup-python's prebuilt tarballs hardcode their sysconfig
+          # include dir as /opt/hostedtoolcache/Python/<ver>/x64/include/...
+          # (the GitHub-hosted-runner convention), but this self-hosted
+          # runner actually extracts to $pythonLocation (/__w/_tool/...), so
+          # that sysconfig path never has anything under it. Point the
+          # compiler at the real headers directly for C extensions (pycairo)
+          # built during `pip install`.
+          export CPATH="$pythonLocation/include/python$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+          echo "Using CPATH=$CPATH"
+          ls -la "$CPATH" || echo "CPATH directory does not exist"
           pip install ".[dev,gui]"
 
       - name: Run tests
