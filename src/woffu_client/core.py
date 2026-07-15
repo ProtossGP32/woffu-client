@@ -9,11 +9,14 @@ functions from a background thread and marshal results back to the main thread
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from .status import from_client_result
 from .status import WoffuStatus
 from .woffu_api_client import WoffuAPIClient
+
+logger = logging.getLogger(__name__)
 
 # Where woffu-client caches credentials. Checked *before* constructing a
 # WoffuAPIClient: its constructor loads this file itself, and when it's
@@ -80,4 +83,4 @@ def _sign(sign_type: str) -> None:
     try:
         _client().sign(type=sign_type)
     except Exception:
-        pass
+        logger.debug("sign %s failed", sign_type, exc_info=True)

@@ -111,6 +111,15 @@ class SignTest(unittest.TestCase):
         mock_client_cls.return_value.sign.side_effect = Exception("boom")
         core.sign_in()  # should not raise
 
+    @patch("src.woffu_client.core._is_configured", return_value=True)
+    @patch("src.woffu_client.core.WoffuAPIClient")
+    def test_sign_failure_is_logged(self, mock_client_cls, _mock_cfg):
+        """A swallowed sign failure still leaves a debug-level trail."""
+        mock_client_cls.return_value.sign.side_effect = Exception("boom")
+        with self.assertLogs("src.woffu_client.core", level="DEBUG") as cm:
+            core.sign_in()
+        self.assertIn("sign in failed", cm.output[0])
+
     @patch("src.woffu_client.core._is_configured", return_value=False)
     @patch("src.woffu_client.core.WoffuAPIClient")
     def test_sign_skips_when_not_configured(self, mock_client_cls, _mock_cfg):
