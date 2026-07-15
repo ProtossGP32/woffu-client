@@ -37,6 +37,19 @@ CLAUDE.md.
       the existing "not configured" state. Security: prefer the system keyring
       over plaintext (see CLAUDE.md "Security").
 
+## Performance
+
+Discussed with reviewer on PR #54: `core._client()` builds a brand new
+`WoffuAPIClient` (and re-authenticates) on every `get_status()`/`sign()`
+call, which means a token exchange every 30s from the poll timer alone.
+Deferred rather than fixed now — see the docstring on `_client()` for the
+thread-safety tradeoff reasoning. Revisit if the poll cadence ever proves
+costly in practice (e.g. rate limiting):
+
+- [ ] **Cache the `WoffuAPIClient` instance** at module level in `core.py`,
+      invalidated on credentials-file mtime change, guarded by a lock since
+      the poll timer and sign actions run in independent daemon threads.
+
 ## Packaging / delivery (already planned)
 
 - [ ] Ship a `.desktop` autostart file so the applet launches on login.

@@ -32,7 +32,19 @@ def _is_configured() -> bool:
 
 
 def _client() -> WoffuAPIClient:
-    """Build a client from cached credentials, non-interactively."""
+    """Build a client from cached credentials, non-interactively.
+
+    Deliberately builds a fresh, independent WoffuAPIClient on every call
+    rather than caching one at module level. applet.py dispatches the 30s
+    status-poll timer and every sign action as separate daemon threads that
+    can already run concurrently (see PR #54 review discussion) — a shared
+    cached client would need a lock plus invalidation logic to stay
+    thread-safe, whereas a fresh instance per call is safe by construction
+    (no shared mutable state) and always picks up credential changes
+    immediately. That trades a token exchange on every call for avoiding
+    that complexity; see TODO.md's "Performance" section if the 30s cadence
+    ever proves costly enough in practice to revisit.
+    """
     return WoffuAPIClient(interactive=False, log_level="CRITICAL")
 
 
