@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import unittest
 from datetime import timedelta
@@ -131,6 +132,24 @@ class WoffuCLITest(unittest.TestCase):
 
         output = json.loads(cast(StringIO, sys.stdout).getvalue())
         self.assertEqual(output, {"error": "token expired"})
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_print_status_json_restores_logging_on_exception(
+        self, mock_client_cls,
+    ):
+        """Logging must be re-enabled even if get_status() raises.
+
+        Regression: logging.disable(NOTSET) used to sit after the client
+        call with no try/finally, so an exception left logging silenced
+        for the rest of the process.
+        """
+        mock_client = mock_client_cls.return_value
+        mock_client.get_status.side_effect = Exception("boom")
+
+        with self.assertRaises(Exception):
+            cli._print_status_json(mock_client)
+
+        self.assertEqual(logging.root.manager.disable, logging.NOTSET)
 
     @patch("src.woffu_client.cli.WoffuAPIClient")
     def test_sign_success(self, mock_client_cls):

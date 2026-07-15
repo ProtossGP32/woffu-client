@@ -22,8 +22,12 @@ DEFAULT_SUMMARY_REPORTS_DIR = Path.home() / "Documents/woffu/summary_reports"
 def _print_status_json(client: WoffuAPIClient) -> None:
     """Print `get-status`'s result as a single JSON line, logs suppressed."""
     logging.disable(logging.INFO)
-    total_time, signed_in, theoretical_time = client.get_status(extend=True)
-    logging.disable(logging.NOTSET)
+    try:
+        total_time, signed_in, theoretical_time = client.get_status(
+            extend=True,
+        )
+    finally:
+        logging.disable(logging.NOTSET)
     status = from_client_result(total_time, signed_in, theoretical_time)
     print(
         json.dumps({
