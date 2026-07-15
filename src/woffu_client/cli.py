@@ -64,8 +64,9 @@ def _handle_get_status(
             # Emit a structured error so the applet can distinguish a real
             # failure from a signed-out state, and fail loudly.
             print(json.dumps({"error": str(e)}))
-            sys.exit(1)
-        print(f"❌ Error retrieving status: {e}", file=sys.stderr)
+        else:
+            print(f"❌ Error retrieving status: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _handle_sign(client: WoffuAPIClient, args: argparse.Namespace) -> None:
@@ -73,6 +74,7 @@ def _handle_sign(client: WoffuAPIClient, args: argparse.Namespace) -> None:
         client.sign(type=args.sign_type)
     except Exception as e:
         print(f"❌ Error sending sign command: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _handle_request_credentials(
@@ -82,6 +84,7 @@ def _handle_request_credentials(
         client.request_and_save_credentials()
     except Exception as e:
         print(f"❌ Error requesting new credentials: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _handle_summary_report(
@@ -99,6 +102,7 @@ def _handle_summary_report(
         )
     except Exception as e:
         print(f"❌ Error retrieving summary report: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 _COMMAND_HANDLERS = {

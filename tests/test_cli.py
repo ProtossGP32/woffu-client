@@ -87,7 +87,9 @@ class WoffuCLITest(unittest.TestCase):
         mock_client.get_status.side_effect = Exception("status failed")
 
         with patch.object(sys, "argv", ["cli", "get-status"]):
-            cli.main()
+            with self.assertRaises(SystemExit) as cm:
+                cli.main()
+            self.assertEqual(cm.exception.code, 1)
 
         error_output = cast(StringIO, sys.stderr).getvalue()
         self.assertIn("❌ Error retrieving status", error_output)
@@ -167,7 +169,9 @@ class WoffuCLITest(unittest.TestCase):
         mock_client.sign.side_effect = Exception("sign failed")
 
         with patch.object(sys, "argv", ["cli", "sign", "--sign-type", "out"]):
-            cli.main()
+            with self.assertRaises(SystemExit) as cm:
+                cli.main()
+            self.assertEqual(cm.exception.code, 1)
 
         error_output = cast(StringIO, sys.stderr).getvalue()
         self.assertIn("❌ Error sending sign command", error_output)
@@ -190,7 +194,9 @@ class WoffuCLITest(unittest.TestCase):
         )
 
         with patch.object(sys, "argv", ["cli", "request-credentials"]):
-            cli.main()
+            with self.assertRaises(SystemExit) as cm:
+                cli.main()
+            self.assertEqual(cm.exception.code, 1)
 
         error_output = cast(StringIO, sys.stderr).getvalue()
         self.assertIn("❌ Error requesting new credentials", error_output)
@@ -240,7 +246,9 @@ class WoffuCLITest(unittest.TestCase):
                 "2025-01-10",
             ],
         ):
-            cli.main()
+            with self.assertRaises(SystemExit) as cm:
+                cli.main()
+            self.assertEqual(cm.exception.code, 1)
 
         error_output = cast(StringIO, sys.stderr).getvalue()
         self.assertIn("❌ Error retrieving summary report", error_output)
