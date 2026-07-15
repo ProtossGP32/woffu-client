@@ -86,6 +86,23 @@ class GetStatusTest(unittest.TestCase):
         self.assertIn("request-credentials", status.error)
         mock_client_cls.assert_not_called()
 
+    @patch("src.woffu_client.core._is_configured", return_value=True)
+    @patch("src.woffu_client.core.WoffuAPIClient")
+    def test_system_exit_from_client_is_not_configured_error(
+        self, mock_client_cls, _mock_cfg,
+    ):
+        """A TOCTOU race surfaces as an error status, not a killed caller.
+
+        WoffuAPIClient's constructor calls sys.exit(1) when the credentials
+        file it expected to find is missing in non-interactive mode. Since
+        SystemExit is a BaseException, an unguarded `except Exception` would
+        let it propagate straight out of get_status().
+        """
+        mock_client_cls.side_effect = SystemExit(1)
+        status = core.get_status()
+        self.assertIsNotNone(status.error)
+        self.assertFalse(status.signed_in)
+
 
 class SignTest(unittest.TestCase):
     """Unit tests for core.sign_in() / core.sign_out()."""
@@ -126,6 +143,15 @@ class SignTest(unittest.TestCase):
         """Signing without credentials is a no-op, no client gets built."""
         core.sign_in()
         mock_client_cls.assert_not_called()
+
+    @patch("src.woffu_client.core._is_configured", return_value=True)
+    @patch("src.woffu_client.core.WoffuAPIClient")
+    def test_sign_swallows_system_exit_from_toctou_race(
+        self, mock_client_cls, _mock_cfg,
+    ):
+        """Same TOCTOU race as get_status(): must not escape sign_in()."""
+        mock_client_cls.side_effect = SystemExit(1)
+        core.sign_in()  # should not raise
 
 
 if __name__ == "__main__":

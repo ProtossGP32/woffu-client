@@ -61,6 +61,16 @@ def get_status() -> WoffuStatus:
         total_time, signed_in, theoretical_time = _client().get_status(
             extend=True,
         )
+    except SystemExit:  # NOSONAR: intentionally not reraised, see comment
+        # TOCTOU: the credentials file can vanish between our _is_configured()
+        # check above and WoffuAPIClient's constructor loading it, which
+        # falls back to a non-interactive sys.exit(1). SystemExit is a
+        # BaseException, so it would otherwise skip straight past
+        # `except Exception` and kill the calling daemon thread outright.
+        # Swallowing it here (rather than reraising) is deliberate: unlike a
+        # CLI process, the applet must never let a transient credentials race
+        # take down the whole panel — that's this module's entire purpose.
+        return _error_status(_NOT_CONFIGURED_MSG)
     except Exception as e:
         return _error_status(str(e))
     return from_client_result(total_time, signed_in, theoretical_time)
@@ -82,5 +92,9 @@ def _sign(sign_type: str) -> None:
         return
     try:
         _client().sign(type=sign_type)
+    except SystemExit:  # NOSONAR: intentionally not reraised, see get_status()
+        # Same TOCTOU race as in get_status(): swallow it the same
+        # best-effort way as any other sign failure.
+        logger.debug("sign %s failed: credentials unavailable", sign_type)
     except Exception:
         logger.debug("sign %s failed", sign_type, exc_info=True)
