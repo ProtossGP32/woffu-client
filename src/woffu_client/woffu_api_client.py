@@ -508,12 +508,10 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
                 # Theoretical schedule hours:
                 match theoretical_schedule['resource']:
                     case "_HoursMinutesFormatted":
-                        hours, minutes = theoretical_schedule['values']
-                        seconds = 0
+                        t_hours, t_minutes = theoretical_schedule['values']
                         theoretical_time = timedelta(
-                            hours=int(hours),
-                            minutes=int(minutes),
-                            seconds=seconds,
+                            hours=int(t_hours),
+                            minutes=int(t_minutes),
                         )
                     case "_HoursFormatted":
                         theoretical_time = timedelta(
@@ -524,9 +522,22 @@ diarysummaries/{diary_summary_id}/workday/slots/self",
                             f"Invalid time format: \
                                 {theoretical_schedule['resource']}",
                         )
+                # Derive the log values from theoretical_time itself (rather
+                # than reusing the worked-hours hours/minutes/seconds above)
+                # so _HoursFormatted and the invalid-format fallback don't
+                # log stale worked-time values under a "Theoretical
+                # schedule" label.
+                theoretical_hours, theoretical_rem = divmod(
+                    theoretical_time.total_seconds(), 3600,
+                )
+                theoretical_minutes, theoretical_seconds = divmod(
+                    theoretical_rem, 60,
+                )
                 logger.info(
                     "Theoretical schedule today: {:02d}:{:02d}:{:02d}".format(
-                        int(hours), int(minutes), int(seconds),
+                        int(theoretical_hours),
+                        int(theoretical_minutes),
+                        int(theoretical_seconds),
                     ),
                 )
 
