@@ -1,8 +1,11 @@
 """Tests for Woffu CLI."""
 from __future__ import annotations
 
+import json
+import logging
 import sys
 import unittest
+from datetime import timedelta
 from io import StringIO
 from pathlib import Path
 from typing import cast
@@ -84,10 +87,71 @@ class WoffuCLITest(unittest.TestCase):
         mock_client.get_status.side_effect = Exception("status failed")
 
         with patch.object(sys, "argv", ["cli", "get-status"]):
-            cli.main()
+            with self.assertRaises(SystemExit) as cm:
+                cli.main()
+            self.assertEqual(cm.exception.code, 1)
 
         error_output = cast(StringIO, sys.stderr).getvalue()
         self.assertIn("❌ Error retrieving status", error_output)
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_get_status_json_success(self, mock_client_cls):
+        """`get-status --json` prints a JSON payload.
+
+        Built from the client's (total_time, signed_in, theoretical_time)
+        tuple, independently of anything in core.py.
+        """
+        mock_client = mock_client_cls.return_value
+        mock_client.get_status.return_value = (
+            timedelta(hours=6, minutes=49, seconds=39),
+            True,
+            timedelta(hours=6, minutes=30),
+        )
+
+        with patch.object(sys, "argv", ["cli", "get-status", "--json"]):
+            cli.main()
+
+        mock_client.get_status.assert_called_once_with(extend=True)
+        output = json.loads(cast(StringIO, sys.stdout).getvalue())
+        self.assertEqual(
+            output, {
+                "signed_in": True,
+                "hours_worked": "06:49:39",
+                "theoretical_hours": "06:30:00",
+            },
+        )
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_get_status_json_failure(self, mock_client_cls):
+        """`get-status --json` emits a structured error and exits non-zero."""
+        mock_client = mock_client_cls.return_value
+        mock_client.get_status.side_effect = Exception("token expired")
+
+        with patch.object(sys, "argv", ["cli", "get-status", "--json"]):
+            with self.assertRaises(SystemExit) as cm:
+                cli.main()
+            self.assertEqual(cm.exception.code, 1)
+
+        output = json.loads(cast(StringIO, sys.stdout).getvalue())
+        self.assertEqual(output, {"error": "token expired"})
+
+    @patch("src.woffu_client.cli.WoffuAPIClient")
+    def test_print_status_json_restores_logging_on_exception(
+        self, mock_client_cls,
+    ):
+        """Logging must be re-enabled even if get_status() raises.
+
+        Regression: logging.disable(NOTSET) used to sit after the client
+        call with no try/finally, so an exception left logging silenced
+        for the rest of the process.
+        """
+        mock_client = mock_client_cls.return_value
+        mock_client.get_status.side_effect = Exception("boom")
+
+        with self.assertRaises(Exception):
+            cli._print_status_json(mock_client)
+
+        self.assertEqual(logging.root.manager.disable, logging.NOTSET)
 
     @patch("src.woffu_client.cli.WoffuAPIClient")
     def test_sign_success(self, mock_client_cls):
@@ -105,7 +169,9 @@ class WoffuCLITest(unittest.TestCase):
         mock_client.sign.side_effect = Exception("sign failed")
 
         with patch.object(sys, "argv", ["cli", "sign", "--sign-type", "out"]):
-            cli.main()
+            with self.assertRaises(SystemExit) as cm:
+                cli.main()
+            self.assertEqual(cm.exception.code, 1)
 
         error_output = cast(StringIO, sys.stderr).getvalue()
         self.assertIn("❌ Error sending sign command", error_output)
@@ -117,17 +183,20 @@ class WoffuCLITest(unittest.TestCase):
         with patch.object(sys, "argv", ["cli", "request-credentials"]):
             cli.main()
 
-        mock_client._request_credentials.assert_called_once()
-        mock_client._save_credentials.assert_called_once()
+        mock_client.request_and_save_credentials.assert_called_once()
 
     @patch("src.woffu_client.cli.WoffuAPIClient")
     def test_request_credentials_failure(self, mock_client_cls):
         """Test credentials request failure."""
         mock_client = mock_client_cls.return_value
-        mock_client._request_credentials.side_effect = Exception("auth error")
+        mock_client.request_and_save_credentials.side_effect = Exception(
+            "auth error",
+        )
 
         with patch.object(sys, "argv", ["cli", "request-credentials"]):
-            cli.main()
+            with self.assertRaises(SystemExit) as cm:
+                cli.main()
+            self.assertEqual(cm.exception.code, 1)
 
         error_output = cast(StringIO, sys.stderr).getvalue()
         self.assertIn("❌ Error requesting new credentials", error_output)
@@ -177,7 +246,9 @@ class WoffuCLITest(unittest.TestCase):
                 "2025-01-10",
             ],
         ):
-            cli.main()
+            with self.assertRaises(SystemExit) as cm:
+                cli.main()
+            self.assertEqual(cm.exception.code, 1)
 
         error_output = cast(StringIO, sys.stderr).getvalue()
         self.assertIn("❌ Error retrieving summary report", error_output)

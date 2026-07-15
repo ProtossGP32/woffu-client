@@ -21,19 +21,23 @@ dev = [
     "pytest-cov>=6.0.0",
     "pre-commit==4.3.0"
 ]
-
+gui = ["PyGObject"]
 
 [project.urls]
 Homepage = "https://github.com/ProtossGP32/woffu-client"
 
 [project.scripts]
 woffu-cli = "woffu_client.cli:main"
+woffu-applet = "woffu_client.applet:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+woffu_client = ["icons/*.svg", "icons/*.png"]
 
 [tool.coverage.run]
 branch = true

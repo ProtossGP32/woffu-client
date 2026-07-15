@@ -590,6 +590,16 @@ WOFFU_USERNAME and WOFFU_PASSWORD.",
             with self.assertRaises(SystemExit):
                 self.client._request_credentials()
 
+    def test_request_and_save_credentials_calls_both(self):
+        """Public method delegates to request + save, in that order."""
+        with (
+            patch.object(self.client, "_request_credentials") as mock_req,
+            patch.object(self.client, "_save_credentials") as mock_save,
+        ):
+            self.client.request_and_save_credentials()
+            mock_req.assert_called_once()
+            mock_save.assert_called_once()
+
 
 # -------------------------------
 # Load credentials handling
@@ -1324,6 +1334,76 @@ class TestWoffuAPIStatusSign(BaseWoffuAPITest):
         self.assertIsInstance(running, bool)
         self.assertIsInstance(theoretical_time, object)  # timedelta
         self.assertEqual(theoretical_time, timedelta())
+
+    @patch("src.woffu_client.woffu_api_client.logger")
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_extend_hours_logs_theoretical_schedule(
+        self, mock_get, mock_presence, mock_logger,
+    ):
+        """The _HoursFormatted branch logs the schedule it just computed.
+
+        Regression: this log line used to reuse the worked-hours
+        hours/minutes/seconds locals instead of the theoretical ones.
+        """
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = [
+            {
+                "SignIn": True,
+                "TrueDate": "2025-09-12T12:00:00.000",
+                "UtcTime": "12:00:00 +01",
+            },
+        ]
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [],
+            "workingTimeFormatted": {
+                "resource": "_HoursFormatted",
+                "values": ['7'],
+            },
+        }
+        mock_presence.return_value = [diary]
+
+        self.client.get_status(extend=True)
+
+        logged = [c.args[0] for c in mock_logger.info.call_args_list]
+        self.assertIn("Theoretical schedule today: 07:00:00", logged)
+
+    @patch("src.woffu_client.woffu_api_client.logger")
+    @patch.object(WoffuAPIClient, "_get_presence")
+    @patch.object(WoffuAPIClient, "get")
+    def test_get_status_extend_invalid_format_logs_zeroed_schedule(
+        self, mock_get, mock_presence, mock_logger,
+    ):
+        """The invalid-format fallback logs a zeroed schedule.
+
+        Regression: it used to log whatever the worked-hours
+        hours/minutes/seconds locals held, not the (unset) theoretical ones.
+        """
+        mock_get.return_value.status = 200
+        mock_get.return_value.json.return_value = [
+            {
+                "SignIn": True,
+                "TrueDate": "2025-09-12T12:00:00.000",
+                "UtcTime": "12:00:00 +01",
+            },
+        ]
+        diary = {
+            "date": "2025-09-12",
+            "diarySummaryId": 1,
+            "diaryHourTypes": [],
+            "workingTimeFormatted": {
+                "resource": "_InvalidFormatted",
+                "values": ['6', '30'],
+            },
+        }
+        mock_presence.return_value = [diary]
+
+        self.client.get_status(extend=True)
+
+        logged = [c.args[0] for c in mock_logger.info.call_args_list]
+        self.assertIn("Theoretical schedule today: 00:00:00", logged)
 
     @patch.object(WoffuAPIClient, "get")
     @patch.object(WoffuAPIClient, "post")

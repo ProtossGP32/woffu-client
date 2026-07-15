@@ -6,23 +6,116 @@ CLI tool for woffu-client.
 from __future__ import annotations
 
 import argparse
+import json
+import logging
 import sys
 from pathlib import Path
 
 from woffu_client import WoffuAPIClient  # adjust import path
+from woffu_client.status import from_client_result
 
 DEFAULT_CONFIG = Path.home() / ".config/woffu/woffu_auth.json"
 DEFAULT_OUTPUT_DIR = Path.home() / "Documents/woffu/docs"
 DEFAULT_SUMMARY_REPORTS_DIR = Path.home() / "Documents/woffu/summary_reports"
 
 
-def main() -> None:
-    """
-    Execute a Woffu action depending on the provided command.
+def _print_status_json(client: WoffuAPIClient) -> None:
+    """Print `get-status`'s result as a single JSON line, logs suppressed."""
+    logging.disable(logging.INFO)
+    try:
+        total_time, signed_in, theoretical_time = client.get_status(
+            extend=True,
+        )
+    finally:
+        logging.disable(logging.NOTSET)
+    status = from_client_result(total_time, signed_in, theoretical_time)
+    print(
+        json.dumps({
+            "signed_in": status.signed_in,
+            "hours_worked": status.hours_worked,
+            "theoretical_hours": status.theoretical_hours,
+        }),
+    )
 
-    :params None
-    :return None
-    """
+
+def _handle_download_all_documents(
+    client: WoffuAPIClient, args: argparse.Namespace,
+) -> None:
+    try:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        client.download_all_documents(output_dir=args.output_dir)
+        print(f"✅ Files downloaded to {args.output_dir}")
+    except Exception as e:
+        print(f"❌ Error downloading files: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _handle_get_status(
+    client: WoffuAPIClient, args: argparse.Namespace,
+) -> None:
+    try:
+        if args.json:
+            _print_status_json(client)
+        else:
+            client.get_status(extend=args.extend)
+    except Exception as e:
+        logging.disable(logging.NOTSET)
+        if args.json:
+            # Emit a structured error so the applet can distinguish a real
+            # failure from a signed-out state, and fail loudly.
+            print(json.dumps({"error": str(e)}))
+        else:
+            print(f"❌ Error retrieving status: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _handle_sign(client: WoffuAPIClient, args: argparse.Namespace) -> None:
+    try:
+        client.sign(type=args.sign_type)
+    except Exception as e:
+        print(f"❌ Error sending sign command: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _handle_request_credentials(
+    client: WoffuAPIClient, args: argparse.Namespace,
+) -> None:
+    try:
+        client.request_and_save_credentials()
+    except Exception as e:
+        print(f"❌ Error requesting new credentials: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _handle_summary_report(
+    client: WoffuAPIClient, args: argparse.Namespace,
+) -> None:
+    try:
+        summary_report = client.get_summary_report(
+            from_date=args.from_date, to_date=args.to_date,
+        )
+        client.export_summary_to_csv(
+            summary_report=summary_report,
+            from_date=args.from_date,
+            to_date=args.to_date,
+            output_path=args.output_dir,
+        )
+    except Exception as e:
+        print(f"❌ Error retrieving summary report: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+_COMMAND_HANDLERS = {
+    "download-all-documents": _handle_download_all_documents,
+    "get-status": _handle_get_status,
+    "sign": _handle_sign,
+    "request-credentials": _handle_request_credentials,
+    "summary-report": _handle_summary_report,
+}
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the woffu-cli argument parser and all its subcommands."""
     parser = argparse.ArgumentParser(
         prog="woffu-cli", description="CLI interface for Woffu API client",
     )
@@ -80,6 +173,12 @@ def main() -> None:
         help="Shows additional info such as theoretical schedule.",
     )
 
+    status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output status as machine-readable JSON (suppresses log output).",
+    )
+
     # ---- sign ----
     sign_parser = subparsers.add_parser(
         "sign",
@@ -131,58 +230,18 @@ def main() -> None:
             (default: {DEFAULT_SUMMARY_REPORTS_DIR})",
     )
 
-    args = parser.parse_args()
+    return parser
 
-    # Instantiate client
+
+def main() -> None:
+    """Execute a Woffu action depending on the provided command."""
+    args = _build_parser().parse_args()
     client = WoffuAPIClient(
         config=args.config,
         interactive=not args.non_interactive,
         log_level=args.log_level,
     )
-    match args.command:
-        case "download-all-documents":
-            try:
-                args.output_dir.mkdir(parents=True, exist_ok=True)
-                client.download_all_documents(output_dir=args.output_dir)
-                print(f"✅ Files downloaded to {args.output_dir}")
-            except Exception as e:
-                print(f"❌ Error downloading files: {e}", file=sys.stderr)
-                sys.exit(1)
-        case "get-status":
-            try:
-                client.get_status(extend=args.extend)
-            except Exception as e:
-                print(f"❌ Error retrieving status: {e}", file=sys.stderr)
-        case "sign":
-            try:
-                client.sign(type=args.sign_type)
-            except Exception as e:
-                print(f"❌ Error sending sign command: {e}", file=sys.stderr)
-        case "request-credentials":
-            try:
-                client._request_credentials()
-                client._save_credentials()
-            except Exception as e:
-                print(
-                    f"❌ Error requesting new credentials: {e}",
-                    file=sys.stderr,
-                )
-        case "summary-report":
-            try:
-                summary_report = client.get_summary_report(
-                    from_date=args.from_date,
-                    to_date=args.to_date,
-                )
-                client.export_summary_to_csv(
-                    summary_report=summary_report,
-                    from_date=args.from_date,
-                    to_date=args.to_date,
-                    output_path=args.output_dir,
-                )
-            except Exception as e:
-                print(
-                    f"❌ Error retrieving summary report: {e}", file=sys.stderr,
-                )
+    _COMMAND_HANDLERS[args.command](client, args)
 
 
 if __name__ == "__main__":
