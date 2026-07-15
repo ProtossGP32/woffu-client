@@ -10,10 +10,10 @@ handler gets connected to which signal) is exercised without ever touching
 a real display.
 
 applet.py imports gi (PyGObject) at module level, which needs the system
-GTK/AppIndicator introspection typelibs (see CLAUDE.md) rather than just a
-pip install. Skip instead of erroring when that's not available, so a plain
-venv without system gi (e.g. a default VS Code venv) doesn't show this whole
-module as a collection error.
+GTK/AppIndicator introspection typelibs (see .claude/CLAUDE.md) rather than
+just a pip install. Skip instead of erroring when that's not available, so a
+plain venv without system gi (e.g. a default VS Code venv) doesn't show this
+whole module as a collection error.
 """
 from __future__ import annotations
 

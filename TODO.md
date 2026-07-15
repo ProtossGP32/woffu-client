@@ -2,7 +2,7 @@
 
 Future work for the Woffu desktop applet, captured from testing and feedback.
 Keep logic in `core`/`status` (with tests) and `applet` presentational — see
-CLAUDE.md.
+`.claude/CLAUDE.md`.
 
 ## Interaction / UI
 
@@ -35,7 +35,7 @@ CLAUDE.md.
       and runs the request-credentials flow on the user's behalf, instead of
       making them run `woffu-cli request-credentials` in a terminal. Ties into
       the existing "not configured" state. Security: prefer the system keyring
-      over plaintext (see CLAUDE.md "Security").
+      over plaintext (see `.claude/CLAUDE.md` "Security").
 
 ## Performance
 
