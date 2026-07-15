@@ -179,14 +179,15 @@ class WoffuCLITest(unittest.TestCase):
         with patch.object(sys, "argv", ["cli", "request-credentials"]):
             cli.main()
 
-        mock_client._request_credentials.assert_called_once()
-        mock_client._save_credentials.assert_called_once()
+        mock_client.request_and_save_credentials.assert_called_once()
 
     @patch("src.woffu_client.cli.WoffuAPIClient")
     def test_request_credentials_failure(self, mock_client_cls):
         """Test credentials request failure."""
         mock_client = mock_client_cls.return_value
-        mock_client._request_credentials.side_effect = Exception("auth error")
+        mock_client.request_and_save_credentials.side_effect = Exception(
+            "auth error",
+        )
 
         with patch.object(sys, "argv", ["cli", "request-credentials"]):
             cli.main()

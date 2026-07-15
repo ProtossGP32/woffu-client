@@ -590,6 +590,16 @@ WOFFU_USERNAME and WOFFU_PASSWORD.",
             with self.assertRaises(SystemExit):
                 self.client._request_credentials()
 
+    def test_request_and_save_credentials_calls_both(self):
+        """Public method delegates to request + save, in that order."""
+        with (
+            patch.object(self.client, "_request_credentials") as mock_req,
+            patch.object(self.client, "_save_credentials") as mock_save,
+        ):
+            self.client.request_and_save_credentials()
+            mock_req.assert_called_once()
+            mock_save.assert_called_once()
+
 
 # -------------------------------
 # Load credentials handling

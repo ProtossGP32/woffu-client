@@ -165,6 +165,19 @@ Please provide them in WOFFU_USERNAME and WOFFU_PASSWORD.",
         # Get Company information
         self._get_domain_user_companyId()
 
+    def request_and_save_credentials(self) -> None:
+        """Request fresh credentials and persist them to the config file.
+
+        Public entry point for callers outside this class (e.g. `woffu-cli
+        request-credentials`) that previously reached into the private
+        `_request_credentials` / `_save_credentials` methods directly.
+
+        Raises:
+            SystemExit: see `_request_credentials`.
+        """
+        self._request_credentials()
+        self._save_credentials()
+
     def _load_credentials(self, creds_file: str = "") -> None:
         """Load Woffu credentials stored in provided file."""
         # Update the config file path if a new one is provided

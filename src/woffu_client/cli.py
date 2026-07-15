@@ -79,8 +79,7 @@ def _handle_request_credentials(
     client: WoffuAPIClient, args: argparse.Namespace,
 ) -> None:
     try:
-        client._request_credentials()
-        client._save_credentials()
+        client.request_and_save_credentials()
     except Exception as e:
         print(f"❌ Error requesting new credentials: {e}", file=sys.stderr)
 
