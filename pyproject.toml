@@ -37,7 +37,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-woffu_client = ["icons/*.svg", "icons/*.png"]
+woffu_client = ["icons/*.svg", "icons/*.png", "data/*.desktop"]
 
 [tool.coverage.run]
 branch = true

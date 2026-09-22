@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Woffu
+Comment=Sign in or out of Woffu in a couple of clicks
+Exec=woffu-applet
+Icon=woffu
+Terminal=false
+Categories=Utility;
+DBusActivatable=false
+StartupNotify=false

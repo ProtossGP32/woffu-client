@@ -127,6 +127,43 @@ woffu-applet
 python3 -m woffu_client.applet
 ```
 
+##### Launcher entry — GNOME "Activities" app grid
+
+`pip install`ing `woffu-client` does not register a launcher entry — GNOME
+only shows a manually installed `.desktop` file in the "Activities" app
+grid, it doesn't scan `PATH` for scripts. This step is optional (it only
+affects whether you can *launch* `woffu-applet` by clicking its icon
+instead of typing the command) and is unrelated to autostart-at-login,
+which isn't implemented yet (see `TODO.md`).
+
+The package ships its `.desktop` file and icon as package data, so you can
+register them for your user account — no root, no cloning this repo. Run
+this with the same Python/venv you installed `woffu-client` into:
+
+```bash
+# Resolve the installed package's on-disk .desktop file and icon
+DESKTOP_FILE=$(python3 -c "from importlib.resources import files; print(files('woffu_client') / 'data' / 'woffu-applet.desktop')")
+ICON_FILE=$(python3 -c "from importlib.resources import files; print(files('woffu_client') / 'icons' / 'woffu.svg')")
+
+# Register the launcher entry for your user only
+xdg-desktop-menu install --mode user "$DESKTOP_FILE"
+
+# Install the icon into the user icon theme so Icon=woffu resolves
+# (xdg-icon-resource only accepts .png/.xpm, so SVGs go straight into
+# the hicolor theme's scalable bucket instead)
+install -Dm644 "$ICON_FILE" ~/.local/share/icons/hicolor/scalable/apps/woffu.svg
+gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor 2>/dev/null || true
+```
+
+Open "Activities" and search for "Woffu" — the entry should appear (usually
+within a few seconds, no logout needed) and launch `woffu-applet`. To
+remove it again:
+
+```bash
+rm ~/.local/share/applications/woffu-applet.desktop
+rm ~/.local/share/icons/hicolor/scalable/apps/woffu.svg
+```
+
 ## Usage
 
 ```bash

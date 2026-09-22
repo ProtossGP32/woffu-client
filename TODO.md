@@ -56,6 +56,11 @@ costly in practice (e.g. rate limiting):
 - [x] README install section: system deps (`python3-gi` + AppIndicator GIR),
       `pip install .[gui]`, the `--system-site-packages` venv note, and enabling
       the GNOME AppIndicator extension.
+- [x] Ship a `.desktop` **launcher** entry (GNOME "Activities" app grid)
+      plus an icon-theme install path, documented in README — usable by
+      plain `pip install`s too, not just a future `.deb`/`.rpm`. Distinct
+      from the autostart item above: no autostart keys added, different
+      XDG location (`~/.local/share/applications/`, not `~/.config/autostart/`).
 
 ### Self-hosted, no-Python-env installable (separate initiative)
 
