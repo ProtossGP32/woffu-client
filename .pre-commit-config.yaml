@@ -32,13 +32,13 @@ repos:
 
   # Setup config formatter
   - repo: https://github.com/asottile/setup-cfg-fmt
-    rev: v3.2.0
+    rev: v3.3.0
     hooks:
       - id: setup-cfg-fmt
 
   # Reorder Python imports
   - repo: https://github.com/asottile/reorder-python-imports
-    rev: v3.17.0
+    rev: v3.18.0
     hooks:
       - id: reorder-python-imports
         args: [
@@ -49,7 +49,7 @@ repos:
 
   # Flake8 - Python linting
   - repo: https://github.com/PyCQA/flake8
-    rev: 7.3.0
+    rev: 7.4.1
     hooks:
       - id: flake8
         additional_dependencies: [flake8-docstrings]
